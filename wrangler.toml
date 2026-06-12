@@ -1,0 +1,26 @@
+# atlas-notify // Cloudflare Worker configuration
+#
+# Routes all of api.atlas-systems.uk/notify* (covers /notify and
+# /notify/health) through this Worker. The route only intercepts traffic
+# that resolves through the Cloudflare proxy, so the api subdomain needs
+# a proxied DNS record (see README, Setup step 1).
+
+name = "atlas-notify"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+# No workers.dev subdomain: this Worker is reachable only on the routed
+# production hostname, which keeps the auth surface to one URL.
+workers_dev = false
+
+routes = [
+  { pattern = "api.atlas-systems.uk/notify*", zone_name = "atlas-systems.uk" }
+]
+
+[observability]
+enabled = true
+
+# Secrets (never in this file, never in source):
+#   npx wrangler secret put DISCORD_WEBHOOK_URL
+#   npx wrangler secret put NOTIFY_TOKEN
+# For local dev, copy .dev.vars.example to .dev.vars instead.

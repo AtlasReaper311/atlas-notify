@@ -1,0 +1,10 @@
+{
+  "source": "pages_deploy",
+  "status": "success",
+  "project": "atlas-doc-viewer",
+  "branch": "main",
+  "commit": "a1b2c3d4e5f6",
+  "commit_message": "feat: ship W-04 case study",
+  "duration_s": 42,
+  "url": "https://cv.atlas-systems.uk"
+}

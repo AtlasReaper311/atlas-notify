@@ -1,0 +1,8 @@
+# Copy to .dev.vars for local `wrangler dev`. Never commit .dev.vars.
+# In production these are Worker secrets, set with `wrangler secret put`.
+
+DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/000000000000000000/REPLACE_ME"
+
+# Shared secret for all three auth dialects (Bearer, GitHub HMAC, cf-webhook-auth).
+# Generate one: openssl rand -hex 32
+NOTIFY_TOKEN="REPLACE_ME"

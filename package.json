@@ -1,0 +1,15 @@
+{
+  "name": "atlas-notify",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Centralised event router for the Atlas Systems stack. One endpoint in, formatted Discord embeds out.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

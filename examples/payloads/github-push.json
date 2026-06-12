@@ -1,0 +1,9 @@
+{
+  "source": "github_push",
+  "repo": "AtlasReaper311/atlas-notify",
+  "branch": "main",
+  "author": "Atlas Reaper",
+  "message": "fix: tighten payload truncation",
+  "sha": "9f8e7d6",
+  "url": "https://github.com/AtlasReaper311/atlas-notify"
+}

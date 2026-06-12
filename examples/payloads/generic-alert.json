@@ -1,0 +1,11 @@
+{
+  "source": "alert",
+  "level": "warning",
+  "title": "github-pulse cache refresh failed",
+  "message": "GitHub API returned 502 twice in a row; serving stale data from KV.",
+  "fields": {
+    "service": "github-pulse",
+    "endpoint": "/pulse"
+  },
+  "url": "https://api.atlas-systems.uk/pulse"
+}

@@ -1,0 +1,7 @@
+{
+  "source": "docker_health",
+  "container": "ollama-rag-kit-rag-api-1",
+  "old_state": "healthy",
+  "new_state": "unhealthy",
+  "host": "SPECULAR-CORE"
+}
