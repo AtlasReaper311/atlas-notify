@@ -141,3 +141,4 @@ they come online. One endpoint, one channel, one place to look.
 
 The transferable pattern is fan-in: producers stay simple because the
 single consumer owns formatting, authentication, and delivery.
+
