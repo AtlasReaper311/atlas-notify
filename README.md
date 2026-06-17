@@ -81,7 +81,10 @@ Envelope sources currently formatted: `pages_deploy`, `docker_health`, `github_p
 
 ## Usage
 
-Full bash and PowerShell examples for every event type live in [`examples/curl-examples.md`](examples/curl-examples.md).
+| Full bash and PowerShell examples for every event type live in [`examples/curl-examples.md`](examples/curl-examples.md). |
+| `GET /` | Self-documenting JSON index of every live Atlas Systems endpoint |
+
+> **Adding a new top-level route.** Worker routes are scoped per pattern, not per hostname; `api.atlas-systems.uk/notify*` only ever claimed that one path. A wildcard route, `api.atlas-systems.uk/*`, is what lets the Worker own the bare root and any future path added here. Without it, an unmatched request falls through to the discard `AAAA` record from Setup step one and times out as a `522`, which looks like the Worker crashed but actually means nothing claimed the request at all.
 
 | Method and path | Purpose |
 |---|---|
