@@ -45,7 +45,48 @@ export default {
     if (request.method === "GET" && url.pathname.endsWith("/health")) {
       return json(200, { ok: true, service: "atlas-notify" });
     }
-
+    
+// API index. Lets a visitor, or you in six months, discover every
+    // live endpoint under this hostname without reading source.
+    // Deliberately unauthenticated and side-effect free, same spirit
+    // as the health check above it.
+    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
+      return json(200, {
+        service: "Atlas Systems API",
+        generatedAt: new Date().toISOString(),
+        endpoints: [
+          {
+            method: "POST",
+            path: "/notify",
+            worker: "atlas-notify",
+            description: "Deliver an event into the Discord notification pipeline",
+          },
+          {
+            method: "GET",
+            path: "/notify/health",
+            worker: "atlas-notify",
+            description: "Liveness probe, unauthenticated",
+          },
+          {
+            method: "GET",
+            path: "/pulse",
+            worker: "github-pulse",
+            description: "Aggregate GitHub stats across the account, KV-cached",
+          },
+          {
+            method: "GET",
+            path: "/pulse?repo=<name>",
+            worker: "github-pulse",
+            description: "Stats for one repository in detail",
+          },
+        ],
+        repos: {
+          "atlas-notify": "https://github.com/AtlasReaper311/atlas-notify",
+          "github-pulse": "https://github.com/AtlasReaper311/github-pulse",
+        },
+      });
+    }
+    
     if (request.method !== "POST") {
       return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
     }
