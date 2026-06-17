@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Test (Vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+
+  notify:
+    name: Report to Discord
+    needs: test
+    if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify success
+        if: needs.test.result == 'success'
+        run: |
+          curl -X POST "${{ secrets.DISCORD_CICD_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "username": "atlas-notify",
+              "embeds": [{
+                "title": "CI passed: atlas-notify",
+                "description": "Vitest auth-dialect suite passed on push to main.",
+                "color": 4906624,
+                "fields": [
+                  {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
+                  {"name": "Actor", "value": "${{ github.actor }}", "inline": true}
+                ],
+                "footer": {"text": "Atlas Systems — Pipeline"}
+              }]
+            }'
+      - name: Notify failure
+        if: needs.test.result == 'failure'
+        run: |
+          curl -X POST "${{ secrets.DISCORD_CICD_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "username": "atlas-notify",
+              "embeds": [{
+                "title": "CI failed: atlas-notify",
+                "description": "Vitest auth-dialect suite failed on push to main.",
+                "color": 14830410,
+                "fields": [
+                  {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
+                  {"name": "Actor", "value": "${{ github.actor }}", "inline": true},
+                  {"name": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "inline": false}
+                ],
+                "footer": {"text": "Atlas Systems — Pipeline"}
+              }]
+            }'
