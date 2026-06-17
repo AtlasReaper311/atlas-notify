@@ -14,7 +14,8 @@ compatibility_date = "2025-09-01"
 workers_dev = false
 
 routes = [
-  { pattern = "api.atlas-systems.uk/notify*", zone_name = "atlas-systems.uk" }
+  { pattern = "api.atlas-systems.uk/notify*", zone_name = "atlas-systems.uk" },
+  { pattern = "api.atlas-systems.uk/*", zone_name = "atlas-systems.uk" }
 ]
 
 [observability]
