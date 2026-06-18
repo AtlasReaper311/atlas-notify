@@ -43,7 +43,7 @@ export default {
     // side-effect free: it confirms the Worker is routed and running,
     // nothing more.
     if (request.method === "GET" && url.pathname.endsWith("/health")) {
-  return json(200, { ok: true, service: "atlas-notify" }, { "Access-Control-Allow-Origin": "https://status.atlas-systems.uk" });
+  return json(200, { ok: true, service: "atlas-notify" }, corsHeaders(request));
 }
     
 // API index. Lets a visitor, or you in six months, discover every
@@ -456,6 +456,16 @@ function firstLine(message) {
   return message ? String(message).split("\n")[0] : "";
 }
 
+const ALLOWED_ORIGINS = ["https://atlas-systems.uk", "https://www.atlas-systems.uk", "https://status.atlas-systems.uk"];
+
+function corsHeaders(request) {
+  const origin = request.headers.get("Origin");
+  const headers = { Vary: "Origin" };
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+  }
+  return headers;
+}
 /**
  * Drop fields with empty values and clamp the rest to Discord's limits.
  * Discord rejects the whole embed if a single field has an empty value,
