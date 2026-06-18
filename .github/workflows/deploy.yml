@@ -1,25 +1,79 @@
-name: deploy
+name: Deploy Worker
 
-# Dormant by design. The decisions log (decisions.md) keeps the Actions
-# pattern documented but not firing; this workflow matches that posture.
-#
-# To go live:
-#   1. Add a repo secret CLOUDFLARE_API_TOKEN
-#      (Cloudflare dashboard > My Profile > API Tokens > "Edit Cloudflare Workers" template)
-#   2. Replace the `on:` block with:
-#        on:
-#          push:
-#            branches: [main]
 on:
   push:
     branches: [main]
 
 jobs:
-  deploy:
+  test:
+    name: Test (Vitest)
     runs-on: ubuntu-latest
-    name: Deploy Worker
     steps:
       - uses: actions/checkout@v4
-      - uses: cloudflare/wrangler-action@v3
+      - uses: actions/setup-node@v4
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          node-version: "22"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+
+  deploy:
+    name: Deploy to Cloudflare Workers
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install dependencies
+        run: npm ci
+      - name: Deploy
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_WORKERS_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+
+  notify:
+    name: Report to Discord
+    needs: [test, deploy]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post result
+        run: |
+          if [ "${{ needs.deploy.result }}" = "success" ]; then
+            COLOR=4906624
+            TITLE="Deploy succeeded: atlas-notify"
+          elif [ "${{ needs.test.result }}" = "failure" ]; then
+            COLOR=14830410
+            TITLE="Deploy blocked: atlas-notify — tests failed"
+          else
+            COLOR=14830410
+            TITLE="Deploy failed: atlas-notify"
+          fi
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
+          curl -X POST "${{ secrets.DISCORD_API_DEPLOYS_WEBHOOK }}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n \
+              --arg title "$TITLE" \
+              --arg color "$COLOR" \
+              --arg sha "$SHORT_SHA" \
+              --arg url "$COMMIT_URL" \
+              --arg actor "${{ github.actor }}" \
+              '{
+                username: "deploy-watch",
+                embeds: [{
+                  title: $title,
+                  color: ($color | tonumber),
+                  fields: [
+                    {name: "Commit", value: ("[" + $sha + "](" + $url + ")"), inline: true},
+                    {name: "Actor", value: $actor, inline: true}
+                  ],
+                  footer: {text: "Atlas Systems — Pipeline"}
+                }]
+              }')"
