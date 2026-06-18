@@ -21,7 +21,7 @@ Centralised event router for the Atlas Systems stack. Services POST events to on
 ```
 Pages deploys ─┐
 GitHub pushes ─┤
-Docker health ─┼──▶  api.atlas-systems.uk/notify  ──▶  Discord #dev-ops
+Docker health ─┼──▶  api.atlas-systems.uk/notify  ──▶  Discord #push-log
 Anything else ─┘         (auth, validate, format)
 ```
 
