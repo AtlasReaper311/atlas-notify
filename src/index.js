@@ -45,31 +45,29 @@ export default {
     if (request.method === "GET" && url.pathname.endsWith("/health")) {
   return json(200, { ok: true, service: "atlas-notify" }, corsHeaders(request));
 }
-    
-// API index. Lets a visitor, or you in six months, discover every
-    // live endpoint under this hostname without reading source.
-    // Deliberately unauthenticated and side-effect free, same spirit
-    // as the health check above it.
+
+/// API index. Lets a visitor discover every live endpoint under this
+    // hostname without reading source. Unauthenticated and side-effect free.
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
       return json(200, {
         service: "Atlas Systems API",
         generatedAt: new Date().toISOString(),
         endpoints: [
           // atlas-notify
-          { method: "GET",  path: "/",                   worker: "atlas-notify",  description: "This index" },
-          { method: "POST", path: "/notify",             worker: "atlas-notify",  description: "Deliver an event into the Discord pipeline (auth required)" },
-          { method: "GET",  path: "/notify/health",      worker: "atlas-notify",  description: "Liveness probe, unauthenticated" },
+          { method: "GET",  path: "/",                    worker: "atlas-notify",  description: "This index" },
+          { method: "POST", path: "/notify",              worker: "atlas-notify",  description: "Deliver an event into the Discord pipeline (auth required)" },
+          { method: "GET",  path: "/notify/health",       worker: "atlas-notify",  description: "Liveness probe, unauthenticated" },
           // github-pulse
-          { method: "GET",  path: "/pulse",              worker: "github-pulse",  description: "Aggregate GitHub stats across the account, KV-cached" },
-          { method: "GET",  path: "/pulse?repo=<name>",  worker: "github-pulse",  description: "Stats for one repository in detail" },
+          { method: "GET",  path: "/pulse",               worker: "github-pulse",  description: "Aggregate GitHub stats across the account, KV-cached" },
+          { method: "GET",  path: "/pulse?repo=<name>",   worker: "github-pulse",  description: "Stats for one repository in detail" },
           // site-pulse
-          { method: "GET",  path: "/site-pulse",         worker: "site-pulse",    description: "Site visit stats for the last 24h, KV-cached" },
-          { method: "GET",  path: "/site-pulse/weekly",  worker: "site-pulse",    description: "Rolling 7-day visit total from daily snapshots" },
-          { method: "GET",  path: "/site-pulse/health",  worker: "site-pulse",    description: "Liveness probe, unauthenticated" },
+          { method: "GET",  path: "/site-pulse",          worker: "site-pulse",    description: "Site visit stats for the last 24h, KV-cached" },
+          { method: "GET",  path: "/site-pulse/weekly",   worker: "site-pulse",    description: "Rolling 7-day visit total from daily snapshots" },
+          { method: "GET",  path: "/site-pulse/health",   worker: "site-pulse",    description: "Liveness probe, unauthenticated" },
           // deploy-watch
-          { method: "GET",  path: "/deploy-watch/latest",worker: "deploy-watch",  description: "Latest Cloudflare Pages deploy snapshot (used by homepage)" },
-          { method: "GET",  path: "/deploy-watch/health",worker: "deploy-watch",  description: "Liveness probe, unauthenticated" },
-          { method: "GET",  path: "/deploy-watch/run",   worker: "deploy-watch",  description: "Manually trigger a deploy check (auth required)" },
+          { method: "GET",  path: "/deploy-watch/latest", worker: "deploy-watch",  description: "Latest Cloudflare Pages deploy snapshot (used by homepage)" },
+          { method: "GET",  path: "/deploy-watch/health", worker: "deploy-watch",  description: "Liveness probe, unauthenticated" },
+          { method: "GET",  path: "/deploy-watch/run",    worker: "deploy-watch",  description: "Manually trigger a deploy check (auth required)" },
         ],
         repos: {
           "atlas-notify":  "https://github.com/AtlasReaper311/atlas-notify",
@@ -81,7 +79,7 @@ export default {
     }
 
     if (request.method !== "POST") {
-    
+
     if (request.method !== "POST") {
       return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
     }
