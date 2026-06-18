@@ -77,6 +77,10 @@ export default {
           "site-pulse":    "https://github.com/AtlasReaper311/site-pulse",
           "deploy-watch":  "https://github.com/AtlasReaper311/deploy-watch",
         },
+      });
+    }
+
+    if (request.method !== "POST") {
     
     if (request.method !== "POST") {
       return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
