@@ -55,37 +55,28 @@ export default {
         service: "Atlas Systems API",
         generatedAt: new Date().toISOString(),
         endpoints: [
-          {
-            method: "POST",
-            path: "/notify",
-            worker: "atlas-notify",
-            description: "Deliver an event into the Discord notification pipeline",
-          },
-          {
-            method: "GET",
-            path: "/notify/health",
-            worker: "atlas-notify",
-            description: "Liveness probe, unauthenticated",
-          },
-          {
-            method: "GET",
-            path: "/pulse",
-            worker: "github-pulse",
-            description: "Aggregate GitHub stats across the account, KV-cached",
-          },
-          {
-            method: "GET",
-            path: "/pulse?repo=<name>",
-            worker: "github-pulse",
-            description: "Stats for one repository in detail",
-          },
+          // atlas-notify
+          { method: "GET",  path: "/",                   worker: "atlas-notify",  description: "This index" },
+          { method: "POST", path: "/notify",             worker: "atlas-notify",  description: "Deliver an event into the Discord pipeline (auth required)" },
+          { method: "GET",  path: "/notify/health",      worker: "atlas-notify",  description: "Liveness probe, unauthenticated" },
+          // github-pulse
+          { method: "GET",  path: "/pulse",              worker: "github-pulse",  description: "Aggregate GitHub stats across the account, KV-cached" },
+          { method: "GET",  path: "/pulse?repo=<name>",  worker: "github-pulse",  description: "Stats for one repository in detail" },
+          // site-pulse
+          { method: "GET",  path: "/site-pulse",         worker: "site-pulse",    description: "Site visit stats for the last 24h, KV-cached" },
+          { method: "GET",  path: "/site-pulse/weekly",  worker: "site-pulse",    description: "Rolling 7-day visit total from daily snapshots" },
+          { method: "GET",  path: "/site-pulse/health",  worker: "site-pulse",    description: "Liveness probe, unauthenticated" },
+          // deploy-watch
+          { method: "GET",  path: "/deploy-watch/latest",worker: "deploy-watch",  description: "Latest Cloudflare Pages deploy snapshot (used by homepage)" },
+          { method: "GET",  path: "/deploy-watch/health",worker: "deploy-watch",  description: "Liveness probe, unauthenticated" },
+          { method: "GET",  path: "/deploy-watch/run",   worker: "deploy-watch",  description: "Manually trigger a deploy check (auth required)" },
         ],
         repos: {
-          "atlas-notify": "https://github.com/AtlasReaper311/atlas-notify",
-          "github-pulse": "https://github.com/AtlasReaper311/github-pulse",
+          "atlas-notify":  "https://github.com/AtlasReaper311/atlas-notify",
+          "github-pulse":  "https://github.com/AtlasReaper311/github-pulse",
+          "site-pulse":    "https://github.com/AtlasReaper311/site-pulse",
+          "deploy-watch":  "https://github.com/AtlasReaper311/deploy-watch",
         },
-      });
-    }
     
     if (request.method !== "POST") {
       return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
