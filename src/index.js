@@ -79,8 +79,6 @@ export default {
     }
 
     if (request.method !== "POST") {
-
-    if (request.method !== "POST") {
       return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
     }
 
