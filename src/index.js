@@ -43,8 +43,8 @@ export default {
     // side-effect free: it confirms the Worker is routed and running,
     // nothing more.
     if (request.method === "GET" && url.pathname.endsWith("/health")) {
-      return json(200, { ok: true, service: "atlas-notify" });
-    }
+  return json(200, { ok: true, service: "atlas-notify" }, { "Access-Control-Allow-Origin": "https://status.atlas-systems.uk" });
+}
     
 // API index. Lets a visitor, or you in six months, discover every
     // live endpoint under this hostname without reading source.
