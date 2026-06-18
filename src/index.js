@@ -379,7 +379,7 @@ function formatGitHubEvent(eventName, payload) {
       fields: compactFields([
         { name: "Branch", value: inlineCode(branch), inline: true },
         { name: "Author", value: head?.author?.name ?? payload?.pusher?.name, inline: true },
-        { name: "Commit", value: inlineCode(shortSha(head?.id)), inline: true },
+        { name: "Commit", value: head?.url ? `[${shortSha(head?.id)}](${head.url})` : inlineCode(shortSha(head?.id)), inline: true },
         { name: "Compare", value: payload?.compare, inline: false },
       ]),
       footer: FOOTER,
