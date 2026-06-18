@@ -32,7 +32,7 @@ jobs:
           curl -X POST "${{ secrets.DISCORD_CICD_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d '{
-              "username": "atlas-notify",
+              "username": "ci-cd",
               "embeds": [{
                 "title": "CI passed: atlas-notify",
                 "description": "Vitest auth-dialect suite passed on push to main.",
@@ -50,7 +50,7 @@ jobs:
           curl -X POST "${{ secrets.DISCORD_CICD_WEBHOOK }}" \
             -H "Content-Type: application/json" \
             -d '{
-              "username": "atlas-notify",
+              "username": "ci-cd",
               "embeds": [{
                 "title": "CI failed: atlas-notify",
                 "description": "Vitest auth-dialect suite failed on push to main.",
