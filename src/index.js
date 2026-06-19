@@ -49,7 +49,7 @@ export default {
 /// API index. Lets a visitor discover every live endpoint under this
     // hostname without reading source. Unauthenticated and side-effect free.
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
-      return json(200, {
+      const data = {
         service: "Atlas Systems API",
         generatedAt: new Date().toISOString(),
         endpoints: [
@@ -78,8 +78,15 @@ export default {
       });
     }
 
-    if (request.method !== "POST") {
-      return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
+    const accept = request.headers.get("accept") || "";
+      if (accept.includes("text/html")) {
+        return new Response(renderIndexHtml(data), {
+          status: 200,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
+
+      return json(200, data);
     }
 
     // Fail loudly on misconfiguration. A router that silently swallows
@@ -457,6 +464,40 @@ function corsHeaders(request) {
   }
   return headers;
 }
+
+/** Terminal-styled HTML view of the API index for browser visitors. */
+function renderIndexHtml(data) {
+  const rows = data.endpoints
+    .map(
+      (e) => `<tr>
+        <td class="m">${e.method}</td>
+        <td>${e.path}</td>
+        <td class="w">${e.worker}</td>
+        <td class="d">${e.description}</td>
+      </tr>`
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>api.atlas-systems.uk</title>
+<style>
+  body{background:#0a0a0f;color:#e8e8e0;font-family:'IBM Plex Mono',monospace;font-size:13px;padding:3rem 2rem;max-width:900px;margin:0 auto}
+  h1{color:#f5a623;font-size:14px;letter-spacing:0.1em;text-transform:uppercase;margin-bottom:0.5rem}
+  .meta{color:#888880;font-size:11px;margin-bottom:2rem}
+  table{width:100%;border-collapse:collapse}
+  td{padding:0.5rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.08);vertical-align:top}
+  td.m{color:#f5a623;font-weight:600;white-space:nowrap}
+  td.w{color:#888880;white-space:nowrap}
+  td.d{color:#aaa9a0}
+  a{color:#e8e8e0}
+</style></head>
+<body>
+  <h1>// atlas systems api</h1>
+  <div class="meta">generated ${data.generatedAt}</div>
+  <table>${rows}</table>
+</body></html>`;
+}
+
 /**
  * Drop fields with empty values and clamp the rest to Discord's limits.
  * Discord rejects the whole embed if a single field has an empty value,
