@@ -43,10 +43,10 @@ export default {
     // side-effect free: it confirms the Worker is routed and running,
     // nothing more.
     if (request.method === "GET" && url.pathname.endsWith("/health")) {
-  return json(200, { ok: true, service: "atlas-notify" }, corsHeaders(request));
-}
+      return json(200, { ok: true, service: "atlas-notify" }, corsHeaders(request));
+    }
 
-/// API index. Lets a visitor discover every live endpoint under this
+    // API index. Lets a visitor discover every live endpoint under this
     // hostname without reading source. Unauthenticated and side-effect free.
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
       const data = {
@@ -86,6 +86,10 @@ export default {
       }
 
       return json(200, data);
+    }
+
+    if (request.method !== "POST") {
+      return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
     }
 
     // Fail loudly on misconfiguration. A router that silently swallows
