@@ -75,10 +75,9 @@ export default {
           "site-pulse":    "https://github.com/AtlasReaper311/site-pulse",
           "deploy-watch":  "https://github.com/AtlasReaper311/deploy-watch",
         },
-      });
-    }
+      };
 
-    const accept = request.headers.get("accept") || "";
+      const accept = request.headers.get("accept") || "";
       if (accept.includes("text/html")) {
         return new Response(renderIndexHtml(data), {
           status: 200,
