@@ -36,7 +36,7 @@ const LIMITS = { title: 256, description: 4096, fieldName: 256, fieldValue: 1024
 const MAX_BODY_BYTES = 64 * 1024;
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     // Liveness probe for Uptime Kuma. Deliberately unauthenticated and
@@ -158,7 +158,9 @@ export default {
       if (retryAfter) headers["Retry-After"] = retryAfter;
       return json(502, { ok: false, error: "Discord rejected the webhook", discordStatus: discord.status }, headers);
     }
-
+    if (auth.dialect === "github" && request.headers.get("x-github-event") === "push") {
+      ctx.waitUntil(purgePulseCache(env));
+    }
     return json(200, { ok: true, dialect: auth.dialect, event: eventLabel });
   },
 };
@@ -468,6 +470,17 @@ function corsHeaders(request) {
   return headers;
 }
 
+async function purgePulseCache(env) {
+  if (!env.PULSE_PURGE_URL || !env.PULSE_PURGE_TOKEN) return;
+  try {
+    await fetch(env.PULSE_PURGE_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${env.PULSE_PURGE_TOKEN}` },
+    });
+  } catch {
+    // best-effort; the hourly TTL is still the fallback if this fails
+  }
+}
 /** Terminal-styled HTML view of the API index for browser visitors. */
 function renderIndexHtml(data) {
   const rows = data.endpoints
