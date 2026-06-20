@@ -1,79 +1,17 @@
-name: Deploy Worker
+name: Deploy
 
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
 
 jobs:
-  test:
-    name: Test (Vitest)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-      - name: Install dependencies
-        run: npm ci
-      - name: Run tests
-        run: npm test
-
   deploy:
-    name: Deploy to Cloudflare Workers
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: "npm"
-      - name: Install dependencies
-        run: npm ci
-      - name: Deploy
-        run: npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_WORKERS_DEPLOY_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-
-  notify:
-    name: Report to Discord
-    needs: [test, deploy]
-    if: always() && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Post result
-        run: |
-          if [ "${{ needs.deploy.result }}" = "success" ]; then
-            COLOR=4906624
-            TITLE="Deploy succeeded: atlas-notify"
-          elif [ "${{ needs.test.result }}" = "failure" ]; then
-            COLOR=14830410
-            TITLE="Deploy blocked: atlas-notify — tests failed"
-          else
-            COLOR=14830410
-            TITLE="Deploy failed: atlas-notify"
-          fi
-          SHORT_SHA="${GITHUB_SHA:0:7}"
-          COMMIT_URL="https://github.com/${{ github.repository }}/commit/${{ github.sha }}"
-          curl -X POST "${{ secrets.DISCORD_API_DEPLOYS_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d "$(jq -n \
-              --arg title "$TITLE" \
-              --arg color "$COLOR" \
-              --arg sha "$SHORT_SHA" \
-              --arg url "$COMMIT_URL" \
-              --arg actor "${{ github.actor }}" \
-              '{
-                username: "deploy-watch",
-                embeds: [{
-                  title: $title,
-                  color: ($color | tonumber),
-                  fields: [
-                    {name: "Commit", value: ("[" + $sha + "](" + $url + ")"), inline: true},
-                    {name: "Actor", value: $actor, inline: true}
-                  ],
-                  footer: {text: "Atlas Systems — Pipeline"}
-                }]
-              }')"
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    uses: AtlasReaper311/atlas-infra/.github/workflows/deploy-worker.yml@main
+    with:
+      worker_name: atlas-notify
+      run_lint: true
+      run_tests: false
+    secrets: inherit
