@@ -124,6 +124,33 @@ export default {
       return json(200, data);
     }
 
+    // Read endpoint for the Lab failure-log panel. Must come before the
+// POST-only guard below.
+if (request.method === "GET" && url.pathname.endsWith("/notify/recent")) {
+  if (!env.NOTIFY_LOG) {
+    return json(503, { ok: false, error: "NOTIFY_LOG KV not bound" }, corsHeaders(request));
+  }
+  const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit")) || 10));
+  const levels = url.searchParams.getAll("level").filter(Boolean);
+  const raw = await env.NOTIFY_LOG.get("notify:recent:v1", "json");
+  const all = Array.isArray(raw) ? raw : [];
+  const levelCounts = all.reduce((acc, e) => {
+    const k = e.level || "info";
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
+  const filtered = levels.length ? all.filter((e) => levels.includes(e.level)) : all;
+  const events = filtered.slice(0, limit);
+  return json(200, {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    total: all.length,
+    returned: events.length,
+    levelCounts,
+    events,
+  }, corsHeaders(request));
+}
+
     if (request.method !== "POST") {
       return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
     }
