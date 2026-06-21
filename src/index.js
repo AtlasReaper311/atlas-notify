@@ -122,11 +122,11 @@ export default {
       if (accept.includes("text/html")) {
         return new Response(renderIndexHtml(data), {
           status: 200,
-          headers: { "content-type": "text/html; charset=utf-8" },
+          headers: { "content-type": "text/html; charset=utf-8", ...corsHeaders(request) },
         });
       }
 
-      return json(200, data);
+      return json(200, data, corsHeaders(request));
     }
 
     if (request.method !== "POST") {
