@@ -7,9 +7,10 @@
  * (crypto.subtle) for GitHub's HMAC verification; testing against a
  * mocked crypto implementation would prove nothing about production.
  *
- * The worker's fetch(request, env) takes no third `ctx` argument and
- * never calls ctx.waitUntil, so it's called directly here with a plain
- * test env object, no wrangler-loaded bindings or .dev.vars needed.
+ * The worker's fetch(request, env, ctx) now uses ctx.waitUntil to
+ * persist events to KV out-of-band, so we pass a stub ctx with a no-op
+ * waitUntil. This also keeps the test signature aligned with the real
+ * Workers runtime, which always provides one.
  *
  * Outbound calls to Discord are intercepted with fetchMock from
  * cloudflare:test rather than hitting the network, so these tests never
@@ -19,7 +20,10 @@ import { fetchMock } from "cloudflare:test";
 import { beforeAll, afterEach, describe, it, expect } from "vitest";
 import worker from "../src/index.js";
 
-const ctx = { waitUntil: () => {} };
+// Stub ExecutionContext. waitUntil is a no-op because the promises it
+// would receive (KV writes, pulse purges) are best-effort and not the
+// subject of these tests; they're covered by their own integration tests.
+const ctx = { waitUntil: () => {}, passThroughOnException: () => {} };
 
 const TEST_TOKEN = "test-notify-token-do-not-use-in-prod";
 const TEST_ENV = {
@@ -54,7 +58,7 @@ function mockDiscordSuccess() {
 
 describe("health check", () => {
   it("responds without authentication", async () => {
-    const res = await worker.fetch(new Request("https://api.atlas-systems.uk/notify/health"), TEST_ENV);
+    const res = await worker.fetch(new Request("https://api.atlas-systems.uk/notify/health"), TEST_ENV, ctx);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, service: "atlas-notify" });
   });
@@ -68,6 +72,7 @@ describe("envelope dialect (Bearer token)", () => {
         body: JSON.stringify({ source: "alert", level: "info", title: "x" }),
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(401);
   });
@@ -80,6 +85,7 @@ describe("envelope dialect (Bearer token)", () => {
         body: JSON.stringify({ source: "alert", level: "info", title: "x" }),
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(401);
   });
@@ -93,6 +99,7 @@ describe("envelope dialect (Bearer token)", () => {
         body: JSON.stringify({ source: "alert", level: "success", title: "Deploy finished" }),
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, dialect: "envelope", event: "alert" });
@@ -109,6 +116,7 @@ describe("GitHub dialect (HMAC)", () => {
         body,
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(401);
   });
@@ -122,6 +130,7 @@ describe("GitHub dialect (HMAC)", () => {
         body,
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(401);
   });
@@ -137,6 +146,7 @@ describe("GitHub dialect (HMAC)", () => {
         body,
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, dialect: "github", event: "github:ping" });
@@ -152,6 +162,7 @@ describe("Cloudflare dialect (header equality)", () => {
         body: JSON.stringify({ name: "test", text: "deploy success" }),
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(401);
   });
@@ -165,6 +176,7 @@ describe("Cloudflare dialect (header equality)", () => {
         body: "verification ping, not JSON",
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, dialect: "cloudflare", event: "cloudflare" });
@@ -180,12 +192,13 @@ describe("request validation", () => {
         body: "{not valid json",
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(400);
   });
 
   it("rejects a GET to /notify itself", async () => {
-    const res = await worker.fetch(new Request("https://api.atlas-systems.uk/notify"), TEST_ENV);
+    const res = await worker.fetch(new Request("https://api.atlas-systems.uk/notify"), TEST_ENV, ctx);
     expect(res.status).toBe(405);
   });
 
@@ -198,6 +211,7 @@ describe("request validation", () => {
         body: huge,
       }),
       TEST_ENV,
+      ctx,
     );
     expect(res.status).toBe(413);
   });
