@@ -18,6 +18,7 @@
  * visible warning embed, never a silent drop or a crash. The only hard
  * rejections are auth failures and unparseable envelope bodies.
  */
+
 // ctx is absent in unit tests (worker.fetch is called with just request+env).
 // Fall back to awaiting inline so behaviour is identical in tests, and
 // fire-and-forget in production.
@@ -124,33 +125,6 @@ export default {
       return json(200, data);
     }
 
-    // Read endpoint for the Lab failure-log panel. Must come before the
-// POST-only guard below.
-if (request.method === "GET" && url.pathname.endsWith("/notify/recent")) {
-  if (!env.NOTIFY_LOG) {
-    return json(503, { ok: false, error: "NOTIFY_LOG KV not bound" }, corsHeaders(request));
-  }
-  const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit")) || 10));
-  const levels = url.searchParams.getAll("level").filter(Boolean);
-  const raw = await env.NOTIFY_LOG.get("notify:recent:v1", "json");
-  const all = Array.isArray(raw) ? raw : [];
-  const levelCounts = all.reduce((acc, e) => {
-    const k = e.level || "info";
-    acc[k] = (acc[k] || 0) + 1;
-    return acc;
-  }, {});
-  const filtered = levels.length ? all.filter((e) => levels.includes(e.level)) : all;
-  const events = filtered.slice(0, limit);
-  return json(200, {
-    ok: true,
-    generatedAt: new Date().toISOString(),
-    total: all.length,
-    returned: events.length,
-    levelCounts,
-    events,
-  }, corsHeaders(request));
-}
-
     if (request.method !== "POST") {
       return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
     }
@@ -256,10 +230,13 @@ async function handleRecent(url, env, cors) {
   const levelParams = url.searchParams.getAll("level").filter((l) => VALID_LEVELS.has(l));
   const wantLevels = levelParams.length ? new Set(levelParams) : null;
 
-  let events = [];
+  // Declared without an initial value so the catch branch is the only
+  // other place that assigns it — keeps the linter happy and avoids
+  // a dead initial assignment.
+  let events;
   try {
     const raw = await env.NOTIFY_LOG.get(RECENT_KEY);
-    events = raw ? JSON.parse(raw) : [];
+    events = raw ? safeParseArray(raw) : [];
   } catch {
     events = [];
   }
@@ -676,6 +653,7 @@ async function purgePulseCache(env) {
     // best-effort; the hourly TTL is still the fallback if this fails
   }
 }
+
 /** Terminal-styled HTML view of the API index for browser visitors. */
 function renderIndexHtml(data) {
   const rows = data.endpoints
