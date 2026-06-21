@@ -1,0 +1,115 @@
+# Reusable workflow: posts a CI/deploy result to atlas-notify.
+#
+# Called from other workflows with:
+#
+#   jobs:
+#     notify:
+#       needs: [build]
+#       if: always()
+#       uses: AtlasReaper311/atlas-notify/.github/workflows/notify.yml@main
+#       with:
+#         status: ${{ needs.build.result }}
+#         kind: ci            # or "deploy"
+#       secrets:
+#         NOTIFY_TOKEN: ${{ secrets.NOTIFY_TOKEN }}
+#
+# `kind` controls which atlas-notify envelope is used:
+#   ci      -> alert        (generic CI pass/fail)
+#   deploy  -> pages_deploy (renders as a Pages deploy embed)
+
+name: notify
+
+on:
+  workflow_call:
+    inputs:
+      status:
+        description: "Job result: success | failure | cancelled | skipped"
+        required: true
+        type: string
+      kind:
+        description: "Event kind: ci | deploy"
+        required: false
+        type: string
+        default: ci
+      title:
+        description: "Optional custom title override"
+        required: false
+        type: string
+        default: ""
+      url:
+        description: "Deploy URL (only used when kind=deploy)"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      NOTIFY_TOKEN:
+        required: true
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to atlas-notify
+        env:
+          NOTIFY_TOKEN: ${{ secrets.NOTIFY_TOKEN }}
+          STATUS: ${{ inputs.status }}
+          KIND: ${{ inputs.kind }}
+          TITLE_OVERRIDE: ${{ inputs.title }}
+          DEPLOY_URL: ${{ inputs.url }}
+        run: |
+          set -euo pipefail
+
+          # Map GitHub job result -> atlas-notify level
+          case "$STATUS" in
+            success)   LEVEL=success ;;
+            failure)   LEVEL=failure ;;
+            cancelled) LEVEL=warning ;;
+            *)         LEVEL=info    ;;
+          esac
+
+          RUN_URL="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+
+          if [ "$KIND" = "deploy" ]; then
+            # pages_deploy envelope: status must be "success" or anything else (treated as failure)
+            DEPLOY_STATUS=$([ "$STATUS" = "success" ] && echo "success" || echo "failure")
+            jq -n \
+              --arg source  "pages_deploy" \
+              --arg status  "$DEPLOY_STATUS" \
+              --arg project "${GITHUB_REPOSITORY##*/}" \
+              --arg branch  "${GITHUB_REF_NAME}" \
+              --arg commit  "${GITHUB_SHA}" \
+              --arg url     "${DEPLOY_URL:-https://github.com/${GITHUB_REPOSITORY}}" \
+              '{source:$source, status:$status, project:$project, branch:$branch, commit:$commit, url:$url}' \
+            > payload.json
+          else
+            # alert envelope: generic CI report
+            if [ -n "$TITLE_OVERRIDE" ]; then
+              TITLE="$TITLE_OVERRIDE"
+            else
+              case "$LEVEL" in
+                success) TITLE="CI passed: ${GITHUB_REPOSITORY}" ;;
+                failure) TITLE="CI failed: ${GITHUB_REPOSITORY}" ;;
+                warning) TITLE="CI cancelled: ${GITHUB_REPOSITORY}" ;;
+                *)       TITLE="CI ${STATUS}: ${GITHUB_REPOSITORY}" ;;
+              esac
+            fi
+
+            jq -n \
+              --arg source "alert" \
+              --arg level  "$LEVEL" \
+              --arg title  "$TITLE" \
+              --arg msg    "${GITHUB_WORKFLOW} on ${GITHUB_REF_NAME} (${SHORT_SHA})" \
+              --arg run    "$RUN_URL" \
+              --arg actor  "${GITHUB_ACTOR}" \
+              --arg branch "${GITHUB_REF_NAME}" \
+              --arg commit "$SHORT_SHA" \
+              '{source:$source, level:$level, title:$title, message:$msg,
+                fields:{Run:$run, Actor:$actor, Branch:$branch, Commit:$commit}}' \
+            > payload.json
+          fi
+
+          curl -sSf -X POST https://api.atlas-systems.uk/notify \
+            -H "Authorization: Bearer $NOTIFY_TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json
