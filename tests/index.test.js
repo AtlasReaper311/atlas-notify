@@ -19,6 +19,8 @@ import { fetchMock } from "cloudflare:test";
 import { beforeAll, afterEach, describe, it, expect } from "vitest";
 import worker from "../src/index.js";
 
+const ctx = { waitUntil: () => {} };
+
 const TEST_TOKEN = "test-notify-token-do-not-use-in-prod";
 const TEST_ENV = {
   NOTIFY_TOKEN: TEST_TOKEN,
