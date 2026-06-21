@@ -62,6 +62,14 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Preflight for any endpoint under this Worker. Browsers send this
+    // before a cross-origin POST (and sometimes before a GET with
+    // custom headers), so it has to be answered before any route-specific
+    // auth or method checks run, or the real request never gets sent.
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
+
     // Liveness probe for Uptime Kuma. Deliberately unauthenticated and
     // side-effect free: it confirms the Worker is routed and running,
     // nothing more.
@@ -75,10 +83,6 @@ export default {
     // site origins so other sites can't quietly build on this cache.
     if (request.method === "GET" && url.pathname.endsWith("/notify/recent")) {
       return handleRecent(url, env, corsHeaders(request));
-    }
-
-    if (request.method === "OPTIONS" && url.pathname.endsWith("/notify/recent")) {
-      return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
 
     // API index. Lets a visitor discover every live endpoint under this
@@ -126,33 +130,33 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST" });
+      return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST", ...corsHeaders(request) });
     }
 
     // Fail loudly on misconfiguration. A router that silently swallows
     // events because a secret is missing is worse than one that errors.
     if (!env.DISCORD_WEBHOOK_URL) {
-      return json(500, { ok: false, error: "DISCORD_WEBHOOK_URL secret is not set" });
+      return json(500, { ok: false, error: "DISCORD_WEBHOOK_URL secret is not set" }, corsHeaders(request));
     }
     if (!env.NOTIFY_TOKEN) {
-      return json(500, { ok: false, error: "NOTIFY_TOKEN secret is not set" });
+      return json(500, { ok: false, error: "NOTIFY_TOKEN secret is not set" }, corsHeaders(request));
     }
 
     const declaredLength = Number(request.headers.get("content-length") || 0);
     if (declaredLength > MAX_BODY_BYTES) {
-      return json(413, { ok: false, error: "payload too large" });
+      return json(413, { ok: false, error: "payload too large" }, corsHeaders(request));
     }
 
     // The body can only be read once, and GitHub HMAC verification needs
     // the exact raw bytes, so read text here and parse JSON later.
     const rawBody = await request.text();
     if (rawBody.length > MAX_BODY_BYTES) {
-      return json(413, { ok: false, error: "payload too large" });
+      return json(413, { ok: false, error: "payload too large" }, corsHeaders(request));
     }
 
     const auth = await authenticate(request, rawBody, env.NOTIFY_TOKEN);
     if (!auth.ok) {
-      return json(401, { ok: false, error: auth.reason });
+      return json(401, { ok: false, error: auth.reason }, corsHeaders(request));
     }
 
     let payload;
@@ -165,7 +169,7 @@ export default {
         // verify on the first try instead of failing setup.
         payload = null;
       } else {
-        return json(400, { ok: false, error: "body is not valid JSON" });
+        return json(400, { ok: false, error: "body is not valid JSON" }, corsHeaders(request));
       }
     }
 
@@ -187,7 +191,7 @@ export default {
     // and only need the event recorded for the Lab Failure log.
     if (payload?.persist_only === true) {
       defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
-      return json(200, { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true });
+      return json(200, { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true }, corsHeaders(request));
     }
 
     const discord = await fetch(env.DISCORD_WEBHOOK_URL, {
@@ -199,7 +203,7 @@ export default {
     if (!discord.ok) {
       // Pass Discord's rate-limit hint through so a well-behaved caller
       // can back off instead of hammering the webhook.
-      const headers = {};
+      const headers = { ...corsHeaders(request) };
       const retryAfter = discord.headers.get("retry-after");
       if (retryAfter) headers["Retry-After"] = retryAfter;
       return json(502, { ok: false, error: "Discord rejected the webhook", discordStatus: discord.status }, headers);
@@ -214,7 +218,7 @@ export default {
     // delivered to Discord and Discord is the source of truth.
     defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
 
-    return json(200, { ok: true, dialect: auth.dialect, event: eventLabel });
+    return json(200, { ok: true, dialect: auth.dialect, event: eventLabel }, corsHeaders(request));
   },
 };
 
@@ -643,7 +647,9 @@ function corsHeaders(request) {
   const origin = request.headers.get("Origin");
   const headers = {
     Vary: "Origin",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type",
+    "Access-Control-Max-Age": "86400",
   };
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;

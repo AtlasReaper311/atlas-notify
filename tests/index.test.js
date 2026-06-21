@@ -64,6 +64,35 @@ describe("health check", () => {
   });
 });
 
+describe("CORS preflight", () => {
+  it("answers OPTIONS /notify with 204 and allows POST", async () => {
+    const res = await worker.fetch(
+      new Request("https://api.atlas-systems.uk/notify", {
+        method: "OPTIONS",
+        headers: { Origin: "https://atlas-systems.uk" },
+      }),
+      TEST_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Methods")).toContain("POST");
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("https://atlas-systems.uk");
+  });
+
+  it("does not echo an Allow-Origin for an untrusted origin", async () => {
+    const res = await worker.fetch(
+      new Request("https://api.atlas-systems.uk/notify", {
+        method: "OPTIONS",
+        headers: { Origin: "https://evil.example" },
+      }),
+      TEST_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBeNull();
+  });
+});
+
 describe("envelope dialect (Bearer token)", () => {
   it("rejects a request with no Authorization header", async () => {
     const res = await worker.fetch(
