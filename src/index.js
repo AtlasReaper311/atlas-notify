@@ -3,7 +3,10 @@
  *
  * Centralised event router for the Atlas Systems stack. Every service
  * POSTs events here; this Worker normalises them into Discord embeds
- * and forwards them to a single webhook.
+ * and forwards them to a single webhook. It also persists a rolling
+ * window of recent events to KV so the Lab page can render a Failure
+ * log — the historical companion to the home page's "is it up now"
+ * indicator.
  *
  * Three inbound dialects share one NOTIFY_TOKEN secret:
  *   1. Atlas envelope  { source, ... }  with  Authorization: Bearer <token>
@@ -35,6 +38,18 @@ const LIMITS = { title: 256, description: 4096, fieldName: 256, fieldValue: 1024
 // legitimate event payload and keeps a hostile caller from burning CPU time.
 const MAX_BODY_BYTES = 64 * 1024;
 
+// Recent-events ring buffer. Stored as a single JSON array under one KV
+// key. A single key keeps the read endpoint to one KV op (cheap, fast)
+// and the cap keeps the document under KV's 25 MB value ceiling by many
+// orders of magnitude. 200 entries is roughly a month of typical events
+// without becoming a log file.
+const RECENT_KEY = "notify:recent:v1";
+const RECENT_MAX = 200;
+const RECENT_PAGE_DEFAULT = 10;
+const RECENT_PAGE_MAX = 50;
+
+const VALID_LEVELS = new Set(["success", "info", "warning", "failure"]);
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -44,6 +59,18 @@ export default {
     // nothing more.
     if (request.method === "GET" && url.pathname.endsWith("/health")) {
       return json(200, { ok: true, service: "atlas-notify" }, corsHeaders(request));
+    }
+
+    // Recent events feed for the Lab page Failure log. Read-only,
+    // unauthenticated (same trust posture as /pulse — the data is
+    // already destined for a public webhook), CORS-restricted to the
+    // site origins so other sites can't quietly build on this cache.
+    if (request.method === "GET" && url.pathname.endsWith("/notify/recent")) {
+      return handleRecent(url, env, corsHeaders(request));
+    }
+
+    if (request.method === "OPTIONS" && url.pathname.endsWith("/notify/recent")) {
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
     }
 
     // API index. Lets a visitor discover every live endpoint under this
@@ -56,10 +83,12 @@ export default {
           // atlas-notify
           { method: "GET",  path: "/",                    worker: "atlas-notify",  description: "This index" },
           { method: "POST", path: "/notify",              worker: "atlas-notify",  description: "Deliver an event into the Discord pipeline (auth required)" },
+          { method: "GET",  path: "/notify/recent",       worker: "atlas-notify",  description: "Recent events feed (optional ?limit=, ?level=)" },
           { method: "GET",  path: "/notify/health",       worker: "atlas-notify",  description: "Liveness probe, unauthenticated" },
           // github-pulse
           { method: "GET",  path: "/pulse",               worker: "github-pulse",  description: "Aggregate GitHub stats across the account, KV-cached" },
           { method: "GET",  path: "/pulse?repo=<name>",   worker: "github-pulse",  description: "Stats for one repository in detail" },
+          { method: "GET",  path: "/pulse/heatmap",       worker: "github-pulse",  description: "Per-day commit counts for the last 90 days" },
           // site-pulse
           { method: "GET",  path: "/site-pulse",          worker: "site-pulse",    description: "Site visit stats for the last 24h, KV-cached" },
           { method: "GET",  path: "/site-pulse/weekly",   worker: "site-pulse",    description: "Rolling 7-day visit total from daily snapshots" },
@@ -161,9 +190,138 @@ export default {
     if (auth.dialect === "github" && request.headers.get("x-github-event") === "push") {
       ctx.waitUntil(purgePulseCache(env));
     }
+
+    // Persist a compact summary of this event to the recent-events ring
+    // buffer for the Lab Failure log. Best-effort: any KV failure must
+    // not propagate to the caller, since the event has already been
+    // delivered to Discord and Discord is the source of truth.
+    ctx.waitUntil(persistRecent(env, auth.dialect, eventLabel, embed));
+
     return json(200, { ok: true, dialect: auth.dialect, event: eventLabel });
   },
 };
+
+/* ------------------------------------------------------------------ */
+/* Recent events store + read endpoint                                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * GET /notify/recent — last N events as JSON for the Lab page.
+ * Query params:
+ *   ?limit=<1..50>          how many to return (default 10)
+ *   ?level=<success|info|warning|failure>   filter by level (optional,
+ *                                           repeatable: ?level=warning&level=failure)
+ */
+async function handleRecent(url, env, cors) {
+  if (!env.NOTIFY_LOG) {
+    // KV not bound — fail informatively rather than silently empty.
+    return json(503, { ok: false, error: "NOTIFY_LOG KV not bound; see wrangler.toml" }, cors);
+  }
+
+  const limit = clampInt(url.searchParams.get("limit"), 1, RECENT_PAGE_MAX, RECENT_PAGE_DEFAULT);
+  const levelParams = url.searchParams.getAll("level").filter((l) => VALID_LEVELS.has(l));
+  const wantLevels = levelParams.length ? new Set(levelParams) : null;
+
+  let events = [];
+  try {
+    const raw = await env.NOTIFY_LOG.get(RECENT_KEY);
+    events = raw ? JSON.parse(raw) : [];
+  } catch {
+    events = [];
+  }
+
+  const filtered = wantLevels
+    ? events.filter((e) => wantLevels.has(e.level))
+    : events;
+  const sliced = filtered.slice(0, limit);
+
+  // Always include the available level set so a frontend can render
+  // accurate filter chips without a second round trip.
+  const counts = {};
+  for (const e of events) counts[e.level] = (counts[e.level] || 0) + 1;
+
+  return new Response(JSON.stringify({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    total: events.length,
+    returned: sliced.length,
+    levelCounts: counts,
+    events: sliced,
+  }), {
+    status: 200,
+    headers: {
+      ...cors,
+      "content-type": "application/json",
+      // 60s browser cache: the panel polls; we don't want every reload
+      // to be a KV read either. The frontend can bypass with ?t=.
+      "Cache-Control": "public, max-age=60",
+    },
+  });
+}
+
+/**
+ * Append a compact summary of the event to the recent ring buffer.
+ * Stores the smallest useful shape: enough for a UI line, not enough
+ * to leak payload contents. Discord is the rich view; this is the
+ * historical companion.
+ *
+ * Note on concurrency: KV is eventually consistent and read-modify-write
+ * is not atomic. With one Worker instance and event rates measured in
+ * dozens/day, the practical loss is ~zero. If two events arrive in the
+ * same millisecond, one overwrites; that's acceptable for a Failure
+ * log whose source of truth is Discord.
+ */
+async function persistRecent(env, dialect, eventLabel, embed) {
+  if (!env.NOTIFY_LOG) return;
+  try {
+    const level = colourToLevel(embed?.color);
+    const summary = {
+      ts: embed?.timestamp || new Date().toISOString(),
+      level,
+      dialect,
+      event: eventLabel,
+      title: embed?.title || "",
+      // Description can be a code-fenced raw body for fallback embeds;
+      // trim hard so the ring buffer stays small.
+      message: truncate(stripCodeFences(embed?.description || ""), 280),
+    };
+
+    const raw = await env.NOTIFY_LOG.get(RECENT_KEY);
+    const existing = raw ? safeParseArray(raw) : [];
+    existing.unshift(summary);
+    if (existing.length > RECENT_MAX) existing.length = RECENT_MAX;
+    await env.NOTIFY_LOG.put(RECENT_KEY, JSON.stringify(existing));
+  } catch {
+    // Best-effort; nothing useful to do here. The event already shipped
+    // to Discord and that is the canonical record.
+  }
+}
+
+function colourToLevel(color) {
+  if (color === COLOURS.success) return "success";
+  if (color === COLOURS.failure) return "failure";
+  if (color === COLOURS.warning) return "warning";
+  return "info";
+}
+
+function stripCodeFences(s) {
+  return String(s).replace(/```[a-z]*\n?/gi, "").replace(/```/g, "").trim();
+}
+
+function safeParseArray(raw) {
+  try {
+    const v = JSON.parse(raw);
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+}
+
+function clampInt(raw, min, max, fallback) {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(n)));
+}
 
 /* ------------------------------------------------------------------ */
 /* Authentication                                                      */
@@ -463,7 +621,10 @@ const ALLOWED_ORIGINS = ["https://atlas-systems.uk", "https://www.atlas-systems.
 
 function corsHeaders(request) {
   const origin = request.headers.get("Origin");
-  const headers = { Vary: "Origin" };
+  const headers = {
+    Vary: "Origin",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+  };
   if (origin && ALLOWED_ORIGINS.includes(origin)) {
     headers["Access-Control-Allow-Origin"] = origin;
   }
