@@ -181,6 +181,15 @@ export default {
       eventLabel = "formatter-error";
     }
 
+
+    // Persist-only mode: write to the ring buffer but skip Discord.
+    // Used by CI/CD pipelines that already post to Discord directly
+    // and only need the event recorded for the Lab Failure log.
+    if (payload?.persist_only === true) {
+      defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
+      return json(200, { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true });
+    }
+
     const discord = await fetch(env.DISCORD_WEBHOOK_URL, {
       method: "POST",
       headers: { "content-type": "application/json" },
