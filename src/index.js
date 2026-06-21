@@ -18,6 +18,13 @@
  * visible warning embed, never a silent drop or a crash. The only hard
  * rejections are auth failures and unparseable envelope bodies.
  */
+// ctx is absent in unit tests (worker.fetch is called with just request+env).
+// Fall back to awaiting inline so behaviour is identical in tests, and
+// fire-and-forget in production.
+function defer(ctx, promise) {
+  if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(promise);
+  else promise.catch(() => {});
+}
 
 // Brand palette as Discord embed colours (decimal RGB).
 // Source of truth: atlas-brand.md.
@@ -188,14 +195,14 @@ export default {
       return json(502, { ok: false, error: "Discord rejected the webhook", discordStatus: discord.status }, headers);
     }
     if (auth.dialect === "github" && request.headers.get("x-github-event") === "push") {
-      ctx.waitUntil(purgePulseCache(env));
+      defer(ctx, purgePulseCache(env));
     }
 
     // Persist a compact summary of this event to the recent-events ring
     // buffer for the Lab Failure log. Best-effort: any KV failure must
     // not propagate to the caller, since the event has already been
     // delivered to Discord and Discord is the source of truth.
-    ctx.waitUntil(persistRecent(env, auth.dialect, eventLabel, embed));
+    defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
 
     return json(200, { ok: true, dialect: auth.dialect, event: eventLabel });
   },
