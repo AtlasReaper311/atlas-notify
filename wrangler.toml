@@ -1,7 +1,7 @@
 # atlas-notify // Cloudflare Worker configuration
 #
-# Routes all of api.atlas-systems.uk/notify* (covers /notify and
-# /notify/health) through this Worker. The route only intercepts traffic
+# Routes all of api.atlas-systems.uk/notify* (covers /notify, /notify/health,
+# and /notify/recent) through this Worker. The route only intercepts traffic
 # that resolves through the Cloudflare proxy, so the api subdomain needs
 # a proxied DNS record (see README, Setup step 1).
 name = "atlas-notify"
@@ -14,8 +14,19 @@ routes = [
   { pattern = "api.atlas-systems.uk/notify*", zone_id = "8ba6350a78c988447c111048b125f917" },
   { pattern = "api.atlas-systems.uk/*", zone_id = "8ba6350a78c988447c111048b125f917" }
 ]
+
 [observability]
 enabled = true
+
+# Recent-events ring buffer for the Lab page Failure log. One KV namespace,
+# one key (notify:recent:v1) holding a JSON array of the last 200 events.
+# Create with:
+#   npx wrangler kv namespace create NOTIFY_LOG
+# Then paste the returned id below.
+[[kv_namespaces]]
+binding = "NOTIFY_LOG"
+id = "bcf2b463496f4f4fbb886ab2d10f225d"
+
 # Secrets (never in this file, never in source):
 #   npx wrangler secret put DISCORD_WEBHOOK_URL
 #   npx wrangler secret put NOTIFY_TOKEN
