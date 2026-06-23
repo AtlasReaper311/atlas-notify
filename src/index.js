@@ -689,6 +689,12 @@ const ENVELOPE_FORMATTERS = {
         value: inlineCode(p.fields.reason),
         inline: true,
       });
+    if (p.fields?.prompt)
+      fields.push({
+        name: "Question",
+        value: p.fields.prompt.slice(0, 200),
+        inline: false,
+      });
     return {
       title: truncate(p.title ?? "ramone event", LIMITS.title),
       description: truncate(p.message ?? "", LIMITS.description),
