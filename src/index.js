@@ -308,20 +308,24 @@ export default {
       );
     }
 
-    // persist_only: write to ring buffer only, no Discord post.
-    if (payload?.persist_only === true) {
+    // persist_only skips Discord only when using the default webhook.
+    // Dedicated channel webhooks (e.g. ramone) always post regardless.
+    const signalClass = payload?.signal_class ?? null;
+    const webhookUrl =
+      signalClass === "ramone" && env.RAMONE_WEBHOOK_URL
+        ? env.RAMONE_WEBHOOK_URL
+        : env.DISCORD_WEBHOOK_URL;
+
+    if (
+      payload?.persist_only === true &&
+      webhookUrl === env.DISCORD_WEBHOOK_URL
+    ) {
       return json(
         200,
         { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true },
         corsHeaders(request),
       );
     }
-
-    // Route ramone events to their own channel.
-    const webhookUrl =
-      payload?.signal_class === "ramone" && env.RAMONE_WEBHOOK_URL
-        ? env.RAMONE_WEBHOOK_URL
-        : env.DISCORD_WEBHOOK_URL;
 
     const discord = await fetch(webhookUrl, {
       method: "POST",
