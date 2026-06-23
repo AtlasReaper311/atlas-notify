@@ -654,60 +654,60 @@ const ENVELOPE_FORMATTERS = {
       ]),
       footer: FOOTER,
       timestamp: new Date().toISOString(),
+    };
+  },
 
-      ramone(p) {
-        const colour =
-          p.level === "failure"
-            ? COLOURS.failure
-            : p.level === "warning"
-              ? COLOURS.warning
-              : COLOURS.info;
-        const fields = [];
-        if (p.fields?.prompt_chars)
-          fields.push({
-            name: "Prompt",
-            value: `${p.fields.prompt_chars} chars`,
-            inline: true,
-          });
-        if (p.fields?.answer_chars)
-          fields.push({
-            name: "Answer",
-            value: `${p.fields.answer_chars} chars`,
-            inline: true,
-          });
-        if (p.fields?.latency_ms)
-          fields.push({
-            name: "Latency",
-            value: `${p.fields.latency_ms}ms`,
-            inline: true,
-          });
-        if (p.fields?.sources_used != null)
-          fields.push({
-            name: "Sources",
-            value: String(p.fields.sources_used),
-            inline: true,
-          });
-        if (p.fields?.ip_hash)
-          fields.push({
-            name: "IP hash",
-            value: inlineCode(p.fields.ip_hash),
-            inline: true,
-          });
-        if (p.fields?.reason)
-          fields.push({
-            name: "Reason",
-            value: inlineCode(p.fields.reason),
-            inline: true,
-          });
-        return {
-          title: truncate(p.title ?? "ramone event", LIMITS.title),
-          description: truncate(p.message ?? "", LIMITS.description),
-          color: colour,
-          fields: compactFields(fields),
-          footer: FOOTER,
-          timestamp: new Date().toISOString(),
-        };
-      },
+  ramone(p) {
+    const colour =
+      p.level === "failure"
+        ? COLOURS.failure
+        : p.level === "warning"
+          ? COLOURS.warning
+          : COLOURS.info;
+    const fields = [];
+    if (p.fields?.prompt_chars)
+      fields.push({
+        name: "Prompt",
+        value: `${p.fields.prompt_chars} chars`,
+        inline: true,
+      });
+    if (p.fields?.answer_chars)
+      fields.push({
+        name: "Answer",
+        value: `${p.fields.answer_chars} chars`,
+        inline: true,
+      });
+    if (p.fields?.latency_ms)
+      fields.push({
+        name: "Latency",
+        value: `${p.fields.latency_ms}ms`,
+        inline: true,
+      });
+    if (p.fields?.sources_used != null)
+      fields.push({
+        name: "Sources",
+        value: String(p.fields.sources_used),
+        inline: true,
+      });
+    if (p.fields?.ip_hash)
+      fields.push({
+        name: "IP hash",
+        value: inlineCode(p.fields.ip_hash),
+        inline: true,
+      });
+    if (p.fields?.reason)
+      fields.push({
+        name: "Reason",
+        value: inlineCode(p.fields.reason),
+        inline: true,
+      });
+    return {
+      title: truncate(p.title ?? "ramone event", LIMITS.title),
+      description: truncate(p.message ?? "", LIMITS.description),
+      color: colour,
+      fields: compactFields(fields),
+      footer: FOOTER,
+      timestamp: new Date().toISOString(),
     };
   },
 
