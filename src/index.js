@@ -40,7 +40,12 @@ const FOOTER = { text: "atlas-notify // api.atlas-systems.uk" };
 
 // Discord hard limits. Exceeding any of these makes the whole request 400,
 // so every formatter routes its strings through truncate().
-const LIMITS = { title: 256, description: 4096, fieldName: 256, fieldValue: 1024 };
+const LIMITS = {
+  title: 256,
+  description: 4096,
+  fieldName: 256,
+  fieldValue: 1024,
+};
 
 // Reject oversized bodies before doing any work. 64 KB is far beyond any
 // legitimate event payload and keeps a hostile caller from burning CPU time.
@@ -74,7 +79,11 @@ export default {
     // side-effect free: it confirms the Worker is routed and running,
     // nothing more.
     if (request.method === "GET" && url.pathname.endsWith("/health")) {
-      return json(200, { ok: true, service: "atlas-notify" }, corsHeaders(request));
+      return json(
+        200,
+        { ok: true, service: "atlas-notify" },
+        corsHeaders(request),
+      );
     }
 
     // Recent events feed for the Lab page Failure log. Read-only,
@@ -87,34 +96,104 @@ export default {
 
     // API index. Lets a visitor discover every live endpoint under this
     // hostname without reading source. Unauthenticated and side-effect free.
-    if (request.method === "GET" && (url.pathname === "/" || url.pathname === "")) {
+    if (
+      request.method === "GET" &&
+      (url.pathname === "/" || url.pathname === "")
+    ) {
       const data = {
         service: "Atlas Systems API",
         generatedAt: new Date().toISOString(),
         endpoints: [
           // atlas-notify
-          { method: "GET",  path: "/",                    worker: "atlas-notify",  description: "This index" },
-          { method: "POST", path: "/notify",              worker: "atlas-notify",  description: "Deliver an event into the Discord pipeline (auth required)" },
-          { method: "GET",  path: "/notify/recent",       worker: "atlas-notify",  description: "Recent events feed (optional ?limit=, ?level=)" },
-          { method: "GET",  path: "/notify/health",       worker: "atlas-notify",  description: "Liveness probe, unauthenticated" },
+          {
+            method: "GET",
+            path: "/",
+            worker: "atlas-notify",
+            description: "This index",
+          },
+          {
+            method: "POST",
+            path: "/notify",
+            worker: "atlas-notify",
+            description:
+              "Deliver an event into the Discord pipeline (auth required)",
+          },
+          {
+            method: "GET",
+            path: "/notify/recent",
+            worker: "atlas-notify",
+            description: "Recent events feed (optional ?limit=, ?level=)",
+          },
+          {
+            method: "GET",
+            path: "/notify/health",
+            worker: "atlas-notify",
+            description: "Liveness probe, unauthenticated",
+          },
           // github-pulse
-          { method: "GET",  path: "/pulse",               worker: "github-pulse",  description: "Aggregate GitHub stats across the account, KV-cached" },
-          { method: "GET",  path: "/pulse?repo=<name>",   worker: "github-pulse",  description: "Stats for one repository in detail" },
-          { method: "GET",  path: "/pulse/heatmap",       worker: "github-pulse",  description: "Per-day commit counts for the last 90 days" },
+          {
+            method: "GET",
+            path: "/pulse",
+            worker: "github-pulse",
+            description: "Aggregate GitHub stats across the account, KV-cached",
+          },
+          {
+            method: "GET",
+            path: "/pulse?repo=<name>",
+            worker: "github-pulse",
+            description: "Stats for one repository in detail",
+          },
+          {
+            method: "GET",
+            path: "/pulse/heatmap",
+            worker: "github-pulse",
+            description: "Per-day commit counts for the last 90 days",
+          },
           // site-pulse
-          { method: "GET",  path: "/site-pulse",          worker: "site-pulse",    description: "Site visit stats for the last 24h, KV-cached" },
-          { method: "GET",  path: "/site-pulse/weekly",   worker: "site-pulse",    description: "Rolling 7-day visit total from daily snapshots" },
-          { method: "GET",  path: "/site-pulse/health",   worker: "site-pulse",    description: "Liveness probe, unauthenticated" },
+          {
+            method: "GET",
+            path: "/site-pulse",
+            worker: "site-pulse",
+            description: "Site visit stats for the last 24h, KV-cached",
+          },
+          {
+            method: "GET",
+            path: "/site-pulse/weekly",
+            worker: "site-pulse",
+            description: "Rolling 7-day visit total from daily snapshots",
+          },
+          {
+            method: "GET",
+            path: "/site-pulse/health",
+            worker: "site-pulse",
+            description: "Liveness probe, unauthenticated",
+          },
           // deploy-watch
-          { method: "GET",  path: "/deploy-watch/latest", worker: "deploy-watch",  description: "Latest Cloudflare Pages deploy snapshot (used by homepage)" },
-          { method: "GET",  path: "/deploy-watch/health", worker: "deploy-watch",  description: "Liveness probe, unauthenticated" },
-          { method: "GET",  path: "/deploy-watch/run",    worker: "deploy-watch",  description: "Manually trigger a deploy check (auth required)" },
+          {
+            method: "GET",
+            path: "/deploy-watch/latest",
+            worker: "deploy-watch",
+            description:
+              "Latest Cloudflare Pages deploy snapshot (used by homepage)",
+          },
+          {
+            method: "GET",
+            path: "/deploy-watch/health",
+            worker: "deploy-watch",
+            description: "Liveness probe, unauthenticated",
+          },
+          {
+            method: "GET",
+            path: "/deploy-watch/run",
+            worker: "deploy-watch",
+            description: "Manually trigger a deploy check (auth required)",
+          },
         ],
         repos: {
-          "atlas-notify":  "https://github.com/AtlasReaper311/atlas-notify",
-          "github-pulse":  "https://github.com/AtlasReaper311/github-pulse",
-          "site-pulse":    "https://github.com/AtlasReaper311/site-pulse",
-          "deploy-watch":  "https://github.com/AtlasReaper311/deploy-watch",
+          "atlas-notify": "https://github.com/AtlasReaper311/atlas-notify",
+          "github-pulse": "https://github.com/AtlasReaper311/github-pulse",
+          "site-pulse": "https://github.com/AtlasReaper311/site-pulse",
+          "deploy-watch": "https://github.com/AtlasReaper311/deploy-watch",
         },
       };
 
@@ -122,7 +201,10 @@ export default {
       if (accept.includes("text/html")) {
         return new Response(renderIndexHtml(data), {
           status: 200,
-          headers: { "content-type": "text/html; charset=utf-8", ...corsHeaders(request) },
+          headers: {
+            "content-type": "text/html; charset=utf-8",
+            ...corsHeaders(request),
+          },
         });
       }
 
@@ -130,28 +212,48 @@ export default {
     }
 
     if (request.method !== "POST") {
-      return json(405, { ok: false, error: "POST events to this endpoint" }, { Allow: "POST", ...corsHeaders(request) });
+      return json(
+        405,
+        { ok: false, error: "POST events to this endpoint" },
+        { Allow: "POST", ...corsHeaders(request) },
+      );
     }
 
     // Fail loudly on misconfiguration. A router that silently swallows
     // events because a secret is missing is worse than one that errors.
     if (!env.DISCORD_WEBHOOK_URL) {
-      return json(500, { ok: false, error: "DISCORD_WEBHOOK_URL secret is not set" }, corsHeaders(request));
+      return json(
+        500,
+        { ok: false, error: "DISCORD_WEBHOOK_URL secret is not set" },
+        corsHeaders(request),
+      );
     }
     if (!env.NOTIFY_TOKEN) {
-      return json(500, { ok: false, error: "NOTIFY_TOKEN secret is not set" }, corsHeaders(request));
+      return json(
+        500,
+        { ok: false, error: "NOTIFY_TOKEN secret is not set" },
+        corsHeaders(request),
+      );
     }
 
     const declaredLength = Number(request.headers.get("content-length") || 0);
     if (declaredLength > MAX_BODY_BYTES) {
-      return json(413, { ok: false, error: "payload too large" }, corsHeaders(request));
+      return json(
+        413,
+        { ok: false, error: "payload too large" },
+        corsHeaders(request),
+      );
     }
 
     // The body can only be read once, and GitHub HMAC verification needs
     // the exact raw bytes, so read text here and parse JSON later.
     const rawBody = await request.text();
     if (rawBody.length > MAX_BODY_BYTES) {
-      return json(413, { ok: false, error: "payload too large" }, corsHeaders(request));
+      return json(
+        413,
+        { ok: false, error: "payload too large" },
+        corsHeaders(request),
+      );
     }
 
     const auth = await authenticate(request, rawBody, env.NOTIFY_TOKEN);
@@ -169,7 +271,11 @@ export default {
         // verify on the first try instead of failing setup.
         payload = null;
       } else {
-        return json(400, { ok: false, error: "body is not valid JSON" }, corsHeaders(request));
+        return json(
+          400,
+          { ok: false, error: "body is not valid JSON" },
+          corsHeaders(request),
+        );
       }
     }
 
@@ -179,22 +285,45 @@ export default {
     let embed;
     let eventLabel;
     try {
-      ({ embed, eventLabel } = buildEmbed(auth.dialect, request, payload, rawBody));
+      ({ embed, eventLabel } = buildEmbed(
+        auth.dialect,
+        request,
+        payload,
+        rawBody,
+      ));
     } catch (err) {
       embed = fallbackEmbed(auth.dialect, rawBody, err);
       eventLabel = "formatter-error";
     }
-
 
     // Persist-only mode: write to the ring buffer but skip Discord.
     // Used by CI/CD pipelines that already post to Discord directly
     // and only need the event recorded for the Lab Failure log.
     if (payload?.persist_only === true) {
       defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
-      return json(200, { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true }, corsHeaders(request));
+      return json(
+        200,
+        { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true },
+        corsHeaders(request),
+      );
     }
 
-    const discord = await fetch(env.DISCORD_WEBHOOK_URL, {
+    // persist_only: write to ring buffer only, no Discord post.
+    if (payload?.persist_only === true) {
+      return json(
+        200,
+        { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true },
+        corsHeaders(request),
+      );
+    }
+
+    // Route ramone events to their own channel.
+    const webhookUrl =
+      payload?.signal_class === "ramone" && env.RAMONE_WEBHOOK_URL
+        ? env.RAMONE_WEBHOOK_URL
+        : env.DISCORD_WEBHOOK_URL;
+
+    const discord = await fetch(webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ embeds: [embed] }),
@@ -206,9 +335,20 @@ export default {
       const headers = { ...corsHeaders(request) };
       const retryAfter = discord.headers.get("retry-after");
       if (retryAfter) headers["Retry-After"] = retryAfter;
-      return json(502, { ok: false, error: "Discord rejected the webhook", discordStatus: discord.status }, headers);
+      return json(
+        502,
+        {
+          ok: false,
+          error: "Discord rejected the webhook",
+          discordStatus: discord.status,
+        },
+        headers,
+      );
     }
-    if (auth.dialect === "github" && request.headers.get("x-github-event") === "push") {
+    if (
+      auth.dialect === "github" &&
+      request.headers.get("x-github-event") === "push"
+    ) {
       defer(ctx, purgePulseCache(env));
     }
 
@@ -218,7 +358,11 @@ export default {
     // delivered to Discord and Discord is the source of truth.
     defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
 
-    return json(200, { ok: true, dialect: auth.dialect, event: eventLabel }, corsHeaders(request));
+    return json(
+      200,
+      { ok: true, dialect: auth.dialect, event: eventLabel },
+      corsHeaders(request),
+    );
   },
 };
 
@@ -236,11 +380,22 @@ export default {
 async function handleRecent(url, env, cors) {
   if (!env.NOTIFY_LOG) {
     // KV not bound — fail informatively rather than silently empty.
-    return json(503, { ok: false, error: "NOTIFY_LOG KV not bound; see wrangler.toml" }, cors);
+    return json(
+      503,
+      { ok: false, error: "NOTIFY_LOG KV not bound; see wrangler.toml" },
+      cors,
+    );
   }
 
-  const limit = clampInt(url.searchParams.get("limit"), 1, RECENT_PAGE_MAX, RECENT_PAGE_DEFAULT);
-  const levelParams = url.searchParams.getAll("level").filter((l) => VALID_LEVELS.has(l));
+  const limit = clampInt(
+    url.searchParams.get("limit"),
+    1,
+    RECENT_PAGE_MAX,
+    RECENT_PAGE_DEFAULT,
+  );
+  const levelParams = url.searchParams
+    .getAll("level")
+    .filter((l) => VALID_LEVELS.has(l));
   const wantLevels = levelParams.length ? new Set(levelParams) : null;
 
   // Declared without an initial value so the catch branch is the only
@@ -264,23 +419,26 @@ async function handleRecent(url, env, cors) {
   const counts = {};
   for (const e of events) counts[e.level] = (counts[e.level] || 0) + 1;
 
-  return new Response(JSON.stringify({
-    ok: true,
-    generatedAt: new Date().toISOString(),
-    total: events.length,
-    returned: sliced.length,
-    levelCounts: counts,
-    events: sliced,
-  }), {
-    status: 200,
-    headers: {
-      ...cors,
-      "content-type": "application/json",
-      // 60s browser cache: the panel polls; we don't want every reload
-      // to be a KV read either. The frontend can bypass with ?t=.
-      "Cache-Control": "public, max-age=60",
+  return new Response(
+    JSON.stringify({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      total: events.length,
+      returned: sliced.length,
+      levelCounts: counts,
+      events: sliced,
+    }),
+    {
+      status: 200,
+      headers: {
+        ...cors,
+        "content-type": "application/json",
+        // 60s browser cache: the panel polls; we don't want every reload
+        // to be a KV read either. The frontend can bypass with ?t=.
+        "Cache-Control": "public, max-age=60",
+      },
     },
-  });
+  );
 }
 
 /**
@@ -329,7 +487,10 @@ function colourToLevel(color) {
 }
 
 function stripCodeFences(s) {
-  return String(s).replace(/```[a-z]*\n?/gi, "").replace(/```/g, "").trim();
+  return String(s)
+    .replace(/```[a-z]*\n?/gi, "")
+    .replace(/```/g, "")
+    .trim();
 }
 
 function safeParseArray(raw) {
@@ -374,8 +535,12 @@ async function authenticate(request, rawBody, token) {
       : { ok: false, reason: "cf-webhook-auth mismatch" };
   }
 
-  const bearer = (request.headers.get("authorization") || "").replace(/^Bearer\s+/i, "");
-  if (!bearer) return { ok: false, reason: "missing Authorization: Bearer token" };
+  const bearer = (request.headers.get("authorization") || "").replace(
+    /^Bearer\s+/i,
+    "",
+  );
+  if (!bearer)
+    return { ok: false, reason: "missing Authorization: Bearer token" };
   return timingSafeEqual(bearer, token)
     ? { ok: true, dialect: "envelope" }
     : { ok: false, reason: "bearer token mismatch" };
@@ -413,7 +578,9 @@ async function verifyGitHubSignature(rawBody, signatureHeader, token) {
     ["sign"],
   );
   const mac = await crypto.subtle.sign("HMAC", key, enc.encode(rawBody));
-  const actualHex = [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const actualHex = [...new Uint8Array(mac)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
   return timingSafeEqual(actualHex, expectedHex);
 }
 
@@ -424,15 +591,21 @@ async function verifyGitHubSignature(rawBody, signatureHeader, token) {
 function buildEmbed(dialect, request, payload, rawBody) {
   if (dialect === "github") {
     const eventName = request.headers.get("x-github-event");
-    return { embed: formatGitHubEvent(eventName, payload), eventLabel: `github:${eventName}` };
+    return {
+      embed: formatGitHubEvent(eventName, payload),
+      eventLabel: `github:${eventName}`,
+    };
   }
 
   if (dialect === "cloudflare") {
-    return { embed: formatCloudflareNotification(payload, rawBody), eventLabel: "cloudflare" };
+    return {
+      embed: formatCloudflareNotification(payload, rawBody),
+      eventLabel: "cloudflare",
+    };
   }
 
   // Envelope dialect: the caller declares its source explicitly.
-  const source = payload?.source;
+  const source = payload?.signal_class ?? payload?.source;
   const formatter = ENVELOPE_FORMATTERS[source];
   if (formatter) {
     return { embed: formatter(payload), eventLabel: source };
@@ -443,7 +616,10 @@ function buildEmbed(dialect, request, payload, rawBody) {
   // create exactly the blind spot this layer exists to remove.
   return {
     embed: {
-      title: truncate(`Unrecognised source: ${source ?? "(none)"}`, LIMITS.title),
+      title: truncate(
+        `Unrecognised source: ${source ?? "(none)"}`,
+        LIMITS.title,
+      ),
       description: codeBlock(rawBody, LIMITS.description),
       color: COLOURS.warning,
       footer: FOOTER,
@@ -462,7 +638,10 @@ const ENVELOPE_FORMATTERS = {
   pages_deploy(p) {
     const ok = p.status === "success";
     return {
-      title: truncate(`Pages deploy ${ok ? "succeeded" : "failed"}: ${p.project ?? "unknown project"}`, LIMITS.title),
+      title: truncate(
+        `Pages deploy ${ok ? "succeeded" : "failed"}: ${p.project ?? "unknown project"}`,
+        LIMITS.title,
+      ),
       color: ok ? COLOURS.success : COLOURS.failure,
       fields: compactFields([
         { name: "Branch", value: inlineCode(p.branch), inline: true },
@@ -471,20 +650,84 @@ const ENVELOPE_FORMATTERS = {
       ]),
       footer: FOOTER,
       timestamp: new Date().toISOString(),
+
+      ramone(p) {
+        const colour =
+          p.level === "failure"
+            ? COLOURS.failure
+            : p.level === "warning"
+              ? COLOURS.warning
+              : COLOURS.info;
+        const fields = [];
+        if (p.fields?.prompt_chars)
+          fields.push({
+            name: "Prompt",
+            value: `${p.fields.prompt_chars} chars`,
+            inline: true,
+          });
+        if (p.fields?.answer_chars)
+          fields.push({
+            name: "Answer",
+            value: `${p.fields.answer_chars} chars`,
+            inline: true,
+          });
+        if (p.fields?.latency_ms)
+          fields.push({
+            name: "Latency",
+            value: `${p.fields.latency_ms}ms`,
+            inline: true,
+          });
+        if (p.fields?.sources_used != null)
+          fields.push({
+            name: "Sources",
+            value: String(p.fields.sources_used),
+            inline: true,
+          });
+        if (p.fields?.ip_hash)
+          fields.push({
+            name: "IP hash",
+            value: inlineCode(p.fields.ip_hash),
+            inline: true,
+          });
+        if (p.fields?.reason)
+          fields.push({
+            name: "Reason",
+            value: inlineCode(p.fields.reason),
+            inline: true,
+          });
+        return {
+          title: truncate(p.title ?? "ramone event", LIMITS.title),
+          description: truncate(p.message ?? "", LIMITS.description),
+          color: colour,
+          fields: compactFields(fields),
+          footer: FOOTER,
+          timestamp: new Date().toISOString(),
+        };
+      },
     };
   },
 
   docker_health(p) {
     // healthy -> green, unhealthy -> red, anything transitional -> amber.
     const colour =
-      p.new_state === "healthy" ? COLOURS.success
-      : p.new_state === "unhealthy" ? COLOURS.failure
-      : COLOURS.warning;
+      p.new_state === "healthy"
+        ? COLOURS.success
+        : p.new_state === "unhealthy"
+          ? COLOURS.failure
+          : COLOURS.warning;
     return {
-      title: truncate(`Container health: ${p.container ?? "unknown"}`, LIMITS.title),
-      description: truncate(`${p.old_state ?? "unknown"} -> ${p.new_state ?? "unknown"}`, LIMITS.description),
+      title: truncate(
+        `Container health: ${p.container ?? "unknown"}`,
+        LIMITS.title,
+      ),
+      description: truncate(
+        `${p.old_state ?? "unknown"} -> ${p.new_state ?? "unknown"}`,
+        LIMITS.description,
+      ),
       color: colour,
-      fields: compactFields([{ name: "Host", value: inlineCode(p.host), inline: true }]),
+      fields: compactFields([
+        { name: "Host", value: inlineCode(p.host), inline: true },
+      ]),
       footer: FOOTER,
       timestamp: new Date().toISOString(),
     };
@@ -505,7 +748,9 @@ const ENVELOPE_FORMATTERS = {
   },
 
   alert(p) {
-    const colour = COLOURS[p.level] ?? (p.level === "error" ? COLOURS.failure : COLOURS.info);
+    const colour =
+      COLOURS[p.level] ??
+      (p.level === "error" ? COLOURS.failure : COLOURS.info);
     return {
       title: truncate(p.title ?? "Alert", LIMITS.title),
       description: truncate(p.message ?? "", LIMITS.description),
@@ -531,7 +776,10 @@ const ENVELOPE_FORMATTERS = {
 function formatGitHubEvent(eventName, payload) {
   if (eventName === "ping") {
     return {
-      title: truncate(`Webhook connected: ${payload?.repository?.full_name ?? "GitHub"}`, LIMITS.title),
+      title: truncate(
+        `Webhook connected: ${payload?.repository?.full_name ?? "GitHub"}`,
+        LIMITS.title,
+      ),
       description: truncate(payload?.zen ?? "", LIMITS.description),
       color: COLOURS.success,
       footer: FOOTER,
@@ -563,8 +811,18 @@ function formatGitHubEvent(eventName, payload) {
       color: COLOURS.info,
       fields: compactFields([
         { name: "Branch", value: inlineCode(branch), inline: true },
-        { name: "Author", value: head?.author?.name ?? payload?.pusher?.name, inline: true },
-        { name: "Commit", value: head?.url ? `[${shortSha(head?.id)}](${head.url})` : inlineCode(shortSha(head?.id)), inline: true },
+        {
+          name: "Author",
+          value: head?.author?.name ?? payload?.pusher?.name,
+          inline: true,
+        },
+        {
+          name: "Commit",
+          value: head?.url
+            ? `[${shortSha(head?.id)}](${head.url})`
+            : inlineCode(shortSha(head?.id)),
+          inline: true,
+        },
         { name: "Compare", value: payload?.compare, inline: false },
       ]),
       footer: FOOTER,
@@ -574,7 +832,10 @@ function formatGitHubEvent(eventName, payload) {
 
   return {
     title: truncate(`GitHub event: ${eventName}`, LIMITS.title),
-    description: truncate(payload?.repository?.full_name ?? "", LIMITS.description),
+    description: truncate(
+      payload?.repository?.full_name ?? "",
+      LIMITS.description,
+    ),
     color: COLOURS.info,
     footer: FOOTER,
     timestamp: new Date().toISOString(),
@@ -590,9 +851,11 @@ function formatCloudflareNotification(payload, rawBody) {
   const name = payload?.name ?? "Cloudflare notification";
   const text = payload?.text ?? (payload ? JSON.stringify(payload) : rawBody);
   const lower = String(text).toLowerCase();
-  const colour = /fail|error|down/.test(lower) ? COLOURS.failure
-    : /success|resolved|deploy/.test(lower) ? COLOURS.success
-    : COLOURS.info;
+  const colour = /fail|error|down/.test(lower)
+    ? COLOURS.failure
+    : /success|resolved|deploy/.test(lower)
+      ? COLOURS.success
+      : COLOURS.info;
   return {
     title: truncate(name, LIMITS.title),
     description: truncate(String(text), LIMITS.description),
@@ -605,10 +868,19 @@ function formatCloudflareNotification(payload, rawBody) {
 /** Last-resort embed when a formatter throws. */
 function fallbackEmbed(dialect, rawBody, err) {
   return {
-    title: truncate(`Event received (${dialect}) but formatting failed`, LIMITS.title),
+    title: truncate(
+      `Event received (${dialect}) but formatting failed`,
+      LIMITS.title,
+    ),
     description: codeBlock(rawBody, LIMITS.description),
     color: COLOURS.warning,
-    fields: compactFields([{ name: "Formatter error", value: String(err?.message ?? err), inline: false }]),
+    fields: compactFields([
+      {
+        name: "Formatter error",
+        value: String(err?.message ?? err),
+        inline: false,
+      },
+    ]),
     footer: FOOTER,
     timestamp: new Date().toISOString(),
   };
@@ -641,7 +913,11 @@ function firstLine(message) {
   return message ? String(message).split("\n")[0] : "";
 }
 
-const ALLOWED_ORIGINS = ["https://atlas-systems.uk", "https://www.atlas-systems.uk", "https://status.atlas-systems.uk"];
+const ALLOWED_ORIGINS = [
+  "https://atlas-systems.uk",
+  "https://www.atlas-systems.uk",
+  "https://status.atlas-systems.uk",
+];
 
 function corsHeaders(request) {
   const origin = request.headers.get("Origin");
@@ -678,7 +954,7 @@ function renderIndexHtml(data) {
         <td>${e.path}</td>
         <td class="w">${e.worker}</td>
         <td class="d">${e.description}</td>
-      </tr>`
+      </tr>`,
     )
     .join("");
 
@@ -709,7 +985,10 @@ function renderIndexHtml(data) {
  */
 function compactFields(fields) {
   return fields
-    .filter((f) => f.value !== undefined && f.value !== null && String(f.value).length > 0)
+    .filter(
+      (f) =>
+        f.value !== undefined && f.value !== null && String(f.value).length > 0,
+    )
     .map((f) => ({
       name: truncate(f.name, LIMITS.fieldName),
       value: truncate(f.value, LIMITS.fieldValue),
