@@ -19,6 +19,8 @@
  * rejections are auth failures and unparseable envelope bodies.
  */
 
+import { handleMeta } from "./_meta.js";
+
 // ctx is absent in unit tests (worker.fetch is called with just request+env).
 // Fall back to awaiting inline so behaviour is identical in tests, and
 // fire-and-forget in production.
@@ -63,9 +65,25 @@ const RECENT_PAGE_MAX = 50;
 
 const VALID_LEVELS = new Set(["success", "info", "warning", "failure"]);
 
+const META = {
+  name: "atlas-notify",
+  description:
+    "Centralised event router for the Atlas Systems stack: payload dialects in, Discord embeds out",
+  version: "1.0.0",
+  endpoints: [
+    { method: "POST", path: "/notify", description: "Deliver an event into the Discord pipeline; Bearer NOTIFY_TOKEN required" },
+    { method: "GET", path: "/notify/recent", description: "Recent events feed with optional ?limit= and ?level= filters" },
+    { method: "GET", path: "/notify/health", description: "Unauthenticated liveness probe" },
+    { method: "GET", path: "/notify/_meta", description: "This document" },
+  ],
+  source: "https://github.com/AtlasReaper311/atlas-notify",
+};
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const meta = handleMeta(url, META);
+    if (meta) return meta;
 
     // Preflight for any endpoint under this Worker. Browsers send this
     // before a cross-origin POST (and sometimes before a GET with
