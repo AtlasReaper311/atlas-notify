@@ -56,6 +56,30 @@ function mockDiscordSuccess() {
     .reply(200, {});
 }
 
+function makeLogEnv() {
+  const store = new Map();
+  return {
+    env: {
+      ...TEST_ENV,
+      NOTIFY_LOG: {
+        get: async (key) => store.get(key) ?? null,
+        put: async (key, value) => store.set(key, value),
+      },
+    },
+  };
+}
+
+function makeWaitCtx() {
+  const pending = [];
+  return {
+    ctx: {
+      waitUntil: (promise) => pending.push(promise),
+      passThroughOnException: () => {},
+    },
+    wait: () => Promise.all(pending),
+  };
+}
+
 describe("health check", () => {
   it("responds without authentication", async () => {
     const res = await worker.fetch(new Request("https://api.atlas-systems.uk/notify/health"), TEST_ENV, ctx);
@@ -132,6 +156,42 @@ describe("envelope dialect (Bearer token)", () => {
     );
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, dialect: "envelope", event: "alert" });
+  });
+
+  it("persists persist_only alerts to the recent feed without Discord", async () => {
+    const { env } = makeLogEnv();
+    const waitCtx = makeWaitCtx();
+    const res = await worker.fetch(
+      new Request("https://api.atlas-systems.uk/notify", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+        body: JSON.stringify({
+          source: "alert",
+          level: "success",
+          title: "Deployed: ramone-edge",
+          message: "Deployed to production [abc1234]",
+          persist_only: true,
+        }),
+      }),
+      env,
+      waitCtx.ctx,
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, dialect: "envelope", event: "alert", persisted: true });
+    await waitCtx.wait();
+
+    const recent = await worker.fetch(
+      new Request("https://api.atlas-systems.uk/notify/recent?limit=5&level=success"),
+      env,
+      waitCtx.ctx,
+    );
+    const body = await recent.json();
+    expect(body.events[0]).toMatchObject({
+      level: "success",
+      title: "Deployed: ramone-edge",
+      message: "Deployed to production [abc1234]",
+    });
   });
 });
 

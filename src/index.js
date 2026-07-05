@@ -326,6 +326,7 @@ export default {
       payload?.persist_only === true &&
       webhookUrl === env.DISCORD_WEBHOOK_URL
     ) {
+      defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
       return json(
         200,
         { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true },
