@@ -14,6 +14,11 @@
  *      with HMAC SHA-256 (X-Hub-Signature-256)
  *   3. Cloudflare notification webhooks, verified via cf-webhook-auth
  *
+ * Channel routing (v1.1.0): an envelope's signal_class selects its
+ * Discord webhook via CLASS_WEBHOOK_SECRETS; unknown or unconfigured
+ * classes fall back to the default webhook. This is the routing seam
+ * NOTIFY_SIGNAL_CLASS was reserved for; consumers never change.
+ *
  * Design rule: a malformed or unknown payload should degrade into a
  * visible warning embed, never a silent drop or a crash. The only hard
  * rejections are auth failures and unparseable envelope bodies.
@@ -69,7 +74,7 @@ const META = {
   name: "atlas-notify",
   description:
     "Centralised event router for the Atlas Systems stack: payload dialects in, Discord embeds out",
-  version: "1.0.0",
+  version: "1.1.0",
   endpoints: [
     { method: "POST", path: "/notify", description: "Deliver an event into the Discord pipeline; Bearer NOTIFY_TOKEN required" },
     { method: "GET", path: "/notify/recent", description: "Recent events feed with optional ?limit= and ?level= filters" },
@@ -315,12 +320,23 @@ export default {
     }
 
     // persist_only skips Discord only when using the default webhook.
-    // Dedicated channel webhooks (e.g. ramone) always post regardless.
+    // Dedicated channel webhooks (ramone, infra_health, rag_queries)
+    // always post regardless.
+    //
+    // This map is the channel routing NOTIFY_SIGNAL_CLASS was designed
+    // for: consumers set the class as a var, this table decides the
+    // destination, and a class without a configured secret degrades to
+    // the default webhook instead of dropping the event. Adding a
+    // channel is one entry here plus one `wrangler secret put`.
     const signalClass = payload?.signal_class ?? null;
+    const CLASS_WEBHOOK_SECRETS = {
+      ramone: "RAMONE_WEBHOOK_URL",
+      infra_health: "INFRA_HEALTH_WEBHOOK_URL",
+      rag_queries: "RAG_QUERIES_WEBHOOK_URL",
+    };
+    const classSecretName = CLASS_WEBHOOK_SECRETS[signalClass];
     const webhookUrl =
-      signalClass === "ramone" && env.RAMONE_WEBHOOK_URL
-        ? env.RAMONE_WEBHOOK_URL
-        : env.DISCORD_WEBHOOK_URL;
+      (classSecretName && env[classSecretName]) || env.DISCORD_WEBHOOK_URL;
 
     if (
       payload?.persist_only === true &&
@@ -616,8 +632,15 @@ function buildEmbed(dialect, request, payload, rawBody) {
   }
 
   // Envelope dialect: the caller declares its source explicitly.
+  // signal_class wins the formatter lookup when it has a bespoke
+  // formatter (ramone does); a class without one falls back to the
+  // payload's source formatter, so infra_health and rag_queries render
+  // through the generic `alert` shape while still labelling the ring
+  // buffer with their class. Without this fallback, every new routing
+  // class would land in the "Unrecognised source" warning path.
   const source = payload?.signal_class ?? payload?.source;
-  const formatter = ENVELOPE_FORMATTERS[source];
+  const formatter =
+    ENVELOPE_FORMATTERS[source] ?? ENVELOPE_FORMATTERS[payload?.source];
   if (formatter) {
     return { embed: formatter(payload), eventLabel: source };
   }

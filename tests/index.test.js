@@ -305,3 +305,125 @@ describe("request validation", () => {
     expect(res.status).toBe(413);
   });
 });
+
+describe("signal-class channel routing (v1.1.0)", () => {
+  // The routing table lives in src/index.js as CLASS_WEBHOOK_SECRETS.
+  // These tests prove three things: a configured class reaches its own
+  // webhook, an unconfigured class degrades to the default webhook, and
+  // a classed alert renders through the generic alert formatter rather
+  // than the "Unrecognised source" warning path.
+  const ROUTED_ENV = {
+    ...TEST_ENV,
+    INFRA_HEALTH_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/infra-id/infra-token",
+    RAG_QUERIES_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/rag-id/rag-token",
+    RAMONE_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/ramone-id/ramone-token",
+  };
+
+  function envelope(body) {
+    return new Request("https://api.atlas-systems.uk/notify", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("routes signal_class infra_health to its dedicated webhook", async () => {
+    let captured = null;
+    fetchMock
+      .get("https://discord.com")
+      .intercept({ method: "POST", path: "/api/webhooks/infra-id/infra-token" })
+      .reply(200, (opts) => {
+        captured = JSON.parse(opts.body);
+        return {};
+      });
+
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "infra_health",
+        level: "warning",
+        title: "WSL2 IP drift detected",
+        message: "eth0 moved; downstream .env files may be stale",
+        fields: { previous: "172.20.1.5", current: "172.20.9.2" },
+      }),
+      ROUTED_ENV,
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.event).toBe("infra_health");
+    // Rendered by the alert formatter: the title survives verbatim,
+    // which the unrecognised-source path would not preserve.
+    expect(captured.embeds[0].title).toBe("WSL2 IP drift detected");
+  });
+
+  it("routes signal_class rag_queries to its dedicated webhook", async () => {
+    fetchMock
+      .get("https://discord.com")
+      .intercept({ method: "POST", path: "/api/webhooks/rag-id/rag-token" })
+      .reply(200, {});
+
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "rag_queries",
+        level: "info",
+        title: "RAG queries, last hour",
+        message: "7 queries",
+        fields: { top_terms: "tunnel, portproxy, ollama" },
+      }),
+      ROUTED_ENV,
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("rag_queries");
+  });
+
+  it("falls back to the default webhook when the class secret is unset", async () => {
+    mockDiscordSuccess(); // default webhook interceptor
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "infra_health",
+        level: "failure",
+        title: "fallback path",
+        message: "no INFRA_HEALTH_WEBHOOK_URL configured",
+      }),
+      TEST_ENV, // deliberately missing the class secret
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("infra_health");
+  });
+
+  it("keeps ramone routing intact (regression)", async () => {
+    fetchMock
+      .get("https://discord.com")
+      .intercept({
+        method: "POST",
+        path: "/api/webhooks/ramone-id/ramone-token",
+      })
+      .reply(200, {});
+
+    const res = await worker.fetch(
+      envelope({
+        signal_class: "ramone",
+        level: "info",
+        title: "ramone event",
+        message: "still on its own channel",
+      }),
+      ROUTED_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("ramone");
+  });
+});
