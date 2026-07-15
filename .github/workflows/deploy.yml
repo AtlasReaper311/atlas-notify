@@ -16,7 +16,7 @@ concurrency:
 jobs:
   deploy:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    uses: AtlasReaper311/atlas-infra/.github/workflows/deploy-worker.yml@main
+    uses: AtlasReaper311/atlas-infra/.github/workflows/deploy-worker.yml@093df3f87fa4e068155455f82c9b69bffad76fb6 # atlas-infra main
     with:
       worker_name: atlas-notify
       run_lint: true
