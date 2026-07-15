@@ -45,6 +45,9 @@ on:
       NOTIFY_TOKEN:
         required: true
 
+permissions:
+  contents: none
+
 concurrency:
   group: ${{ github.repository }}-notify-${{ github.ref }}
   cancel-in-progress: false

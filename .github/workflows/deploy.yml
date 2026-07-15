@@ -6,6 +6,9 @@ on:
     types: [completed]
     branches: [main]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.repository }}-deploy-${{ github.ref }}
   cancel-in-progress: false
