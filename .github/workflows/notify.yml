@@ -45,9 +45,14 @@ on:
       NOTIFY_TOKEN:
         required: true
 
+concurrency:
+  group: ${{ github.repository }}-notify-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   post:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Post to atlas-notify
         env:
