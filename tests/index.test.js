@@ -12,12 +12,10 @@
  * waitUntil. This also keeps the test signature aligned with the real
  * Workers runtime, which always provides one.
  *
- * Outbound calls to Discord are intercepted with fetchMock from
- * cloudflare:test rather than hitting the network, so these tests never
- * depend on, or risk leaking, a real webhook URL.
+ * Outbound calls to Discord are intercepted by stubbing global fetch, so
+ * these tests never depend on, or risk leaking, a real webhook URL.
  */
-import { fetchMock } from "cloudflare:test";
-import { beforeAll, afterEach, describe, it, expect } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 import worker from "../src/index.js";
 
 // Stub ExecutionContext. waitUntil is a no-op because the promises it
@@ -31,13 +29,20 @@ const TEST_ENV = {
   DISCORD_WEBHOOK_URL: "https://discord.com/api/webhooks/test-id/test-token",
 };
 
-beforeAll(() => {
-  fetchMock.activate();
-  fetchMock.disableNetConnect(); // any unmocked outbound call throws loudly instead of hitting the real network
+let outboundFetch;
+let expectedOutboundCalls;
+
+beforeEach(() => {
+  expectedOutboundCalls = 0;
+  outboundFetch = vi.fn(async (input) => {
+    throw new Error(`Unmocked outbound fetch: ${new URL(input.url ?? input)}`);
+  });
+  vi.stubGlobal("fetch", outboundFetch);
 });
 
 afterEach(() => {
-  fetchMock.assertNoPendingInterceptors(); // catches a registered mock that never actually got called
+  expect(outboundFetch).toHaveBeenCalledTimes(expectedOutboundCalls);
+  vi.unstubAllGlobals();
 });
 
 /** Mirrors verifyGitHubSignature's own algorithm, so this proves the
@@ -49,11 +54,17 @@ async function signGitHubBody(rawBody, secret) {
   return "sha256=" + [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function mockDiscordSuccess() {
-  fetchMock
-    .get("https://discord.com")
-    .intercept({ method: "POST", path: "/api/webhooks/test-id/test-token" })
-    .reply(200, {});
+function mockDiscordSuccess(path = "/api/webhooks/test-id/test-token", captureBody) {
+  expectedOutboundCalls += 1;
+  outboundFetch.mockImplementationOnce(async (input, init) => {
+    const request = new Request(input, init);
+    const url = new URL(request.url);
+    expect(url.origin).toBe("https://discord.com");
+    expect(url.pathname).toBe(path);
+    expect(request.method).toBe("POST");
+    if (captureBody) captureBody(await request.json());
+    return Response.json({}, { status: 200 });
+  });
 }
 
 function makeLogEnv() {
@@ -335,13 +346,9 @@ describe("signal-class channel routing (v1.1.0)", () => {
 
   it("routes signal_class infra_health to its dedicated webhook", async () => {
     let captured = null;
-    fetchMock
-      .get("https://discord.com")
-      .intercept({ method: "POST", path: "/api/webhooks/infra-id/infra-token" })
-      .reply(200, (opts) => {
-        captured = JSON.parse(opts.body);
-        return {};
-      });
+    mockDiscordSuccess("/api/webhooks/infra-id/infra-token", (body) => {
+      captured = body;
+    });
 
     const res = await worker.fetch(
       envelope({
@@ -365,10 +372,7 @@ describe("signal-class channel routing (v1.1.0)", () => {
   });
 
   it("routes signal_class rag_queries to its dedicated webhook", async () => {
-    fetchMock
-      .get("https://discord.com")
-      .intercept({ method: "POST", path: "/api/webhooks/rag-id/rag-token" })
-      .reply(200, {});
+    mockDiscordSuccess("/api/webhooks/rag-id/rag-token");
 
     const res = await worker.fetch(
       envelope({
@@ -405,13 +409,7 @@ describe("signal-class channel routing (v1.1.0)", () => {
   });
 
   it("keeps ramone routing intact (regression)", async () => {
-    fetchMock
-      .get("https://discord.com")
-      .intercept({
-        method: "POST",
-        path: "/api/webhooks/ramone-id/ramone-token",
-      })
-      .reply(200, {});
+    mockDiscordSuccess("/api/webhooks/ramone-id/ramone-token");
 
     const res = await worker.fetch(
       envelope({
