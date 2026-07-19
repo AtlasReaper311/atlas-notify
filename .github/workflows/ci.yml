@@ -29,47 +29,16 @@ jobs:
       - name: Run tests
         run: npm test
 
+  # Dogfood: report our own CI through the reusable atlas-notify workflow
+  # instead of a bespoke webhook step. Routes to #ci-cd via signal_class, and
+  # the router mirrors any failure to #alerts. Pinned to the merged commit.
   notify:
-    name: Report to Discord
     needs: test
     if: always() && github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    steps:
-      - name: Notify success
-        if: needs.test.result == 'success'
-        run: |
-          curl -X POST "${{ secrets.DISCORD_CICD_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "username": "ci-cd",
-              "embeds": [{
-                "title": "CI passed: atlas-notify",
-                "description": "Vitest auth-dialect suite passed on push to main.",
-                "color": 4906624,
-                "fields": [
-                  {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
-                  {"name": "Actor", "value": "${{ github.actor }}", "inline": true}
-                ],
-                "footer": {"text": "Atlas Systems — Pipeline"}
-              }]
-            }'
-      - name: Notify failure
-        if: needs.test.result == 'failure'
-        run: |
-          curl -X POST "${{ secrets.DISCORD_CICD_WEBHOOK }}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "username": "ci-cd",
-              "embeds": [{
-                "title": "CI failed: atlas-notify",
-                "description": "Vitest auth-dialect suite failed on push to main.",
-                "color": 14830410,
-                "fields": [
-                  {"name": "Commit", "value": "${{ github.sha }}", "inline": true},
-                  {"name": "Actor", "value": "${{ github.actor }}", "inline": true},
-                  {"name": "Run", "value": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}", "inline": false}
-                ],
-                "footer": {"text": "Atlas Systems — Pipeline"}
-              }]
-            }'
+    uses: AtlasReaper311/atlas-notify/.github/workflows/notify.yml@4485013d9a432d4759ce025fa9bc73aa6a2d9c7f # atlas-notify main: channel routing
+    with:
+      status: ${{ needs.test.result }}
+      kind: ci
+      signal_class: cicd
+    secrets:
+      NOTIFY_TOKEN: ${{ secrets.NOTIFY_TOKEN }}
