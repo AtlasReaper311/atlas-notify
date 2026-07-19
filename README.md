@@ -39,6 +39,26 @@ One `NOTIFY_TOKEN` secret authenticates three different calling styles, so nativ
 
 Envelope sources currently formatted: `pages_deploy`, `docker_health`, `github_push`, `alert`. The `alert` source is the catch-all: any service can report anything with a `level` of `success`, `failure`, `warning`, or `info`. Payload shapes live in [`examples/payloads/`](examples/payloads/).
 
+## Channel routing
+
+A payload may carry a `signal_class` that selects a dedicated Discord channel. Each class maps to one Worker secret; a class with no secret set degrades to `DISCORD_WEBHOOK_URL` rather than dropping the event, so adding a channel is one secret plus nothing else. Any event with `level: failure` is additionally mirrored to the alerts channel, so a single phone push on that one channel covers the whole estate while topical channels stay muted.
+
+| `signal_class` | Secret | Channel intent |
+|---|---|---|
+| _(unset)_ | `DISCORD_WEBHOOK_URL` | default catch-all |
+| `ramone` | `RAMONE_WEBHOOK_URL` | Ramone website questions |
+| `infra_health` | `INFRA_HEALTH_WEBHOOK_URL` | SPECULAR-CORE service health |
+| `rag_queries` | `RAG_QUERIES_WEBHOOK_URL` | RAG query reports |
+| `cicd` | `CICD_WEBHOOK_URL` | CI results |
+| `site_deploy` | `SITE_DEPLOY_WEBHOOK_URL` | atlas-systems website deploys |
+| `api_deploy` | `API_DEPLOY_WEBHOOK_URL` | every other repo's deploy |
+| `alerts` | `ALERTS_WEBHOOK_URL` | failure mirror target |
+| `deps_security` | `DEPS_SECURITY_WEBHOOK_URL` | Dependabot and security alerts |
+| `reviews` | `REVIEWS_WEBHOOK_URL` | issues and review requests |
+| `quota_cost` | `QUOTA_COST_WEBHOOK_URL` | quota and cost transitions |
+
+CI and deploy workflows set the class through the reusable [`notify.yml`](.github/workflows/notify.yml) `signal_class` input.
+
 ## Prerequisites
 
 - Node 22+ and `npx` (wrangler runs through it, no global install; the test toolchain specifically requires 22+)

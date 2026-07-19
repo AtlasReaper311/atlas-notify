@@ -333,6 +333,16 @@ export default {
       ramone: "RAMONE_WEBHOOK_URL",
       infra_health: "INFRA_HEALTH_WEBHOOK_URL",
       rag_queries: "RAG_QUERIES_WEBHOOK_URL",
+      // Estate-wide pipeline channels. Each class is one entry here plus one
+      // `wrangler secret put`; an unset secret degrades to the default
+      // webhook rather than dropping the event.
+      cicd: "CICD_WEBHOOK_URL",
+      site_deploy: "SITE_DEPLOY_WEBHOOK_URL",
+      api_deploy: "API_DEPLOY_WEBHOOK_URL",
+      alerts: "ALERTS_WEBHOOK_URL",
+      deps_security: "DEPS_SECURITY_WEBHOOK_URL",
+      reviews: "REVIEWS_WEBHOOK_URL",
+      quota_cost: "QUOTA_COST_WEBHOOK_URL",
     };
     const classSecretName = CLASS_WEBHOOK_SECRETS[signalClass];
     const webhookUrl =
@@ -377,6 +387,18 @@ export default {
       request.headers.get("x-github-event") === "push"
     ) {
       defer(ctx, purgePulseCache(env));
+    }
+
+    // Failure mirror: every failure also lands in the dedicated alerts
+    // channel, so one phone push on that single channel covers the whole
+    // estate while the topical channels stay muted. Best-effort and deduped
+    // so a failure already routed to the alerts channel is not posted twice.
+    if (
+      colourToLevel(embed?.color) === "failure" &&
+      env.ALERTS_WEBHOOK_URL &&
+      webhookUrl !== env.ALERTS_WEBHOOK_URL
+    ) {
+      defer(ctx, mirrorToAlerts(env.ALERTS_WEBHOOK_URL, embed));
     }
 
     // Persist a compact summary of this event to the recent-events ring
@@ -503,6 +525,21 @@ async function persistRecent(env, dialect, eventLabel, embed) {
   } catch {
     // Best-effort; nothing useful to do here. The event already shipped
     // to Discord and that is the canonical record.
+  }
+}
+
+// Post an already-built embed to the alerts webhook. Best-effort: the event
+// has already reached its topical channel, so a mirror failure is swallowed
+// rather than surfaced to the caller.
+async function mirrorToAlerts(webhookUrl, embed) {
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ embeds: [embed] }),
+    });
+  } catch {
+    // Nothing useful to do here; the topical delivery already succeeded.
   }
 }
 

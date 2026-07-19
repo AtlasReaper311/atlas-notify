@@ -10,12 +10,20 @@
 #       with:
 #         status: ${{ needs.build.result }}
 #         kind: ci            # or "deploy"
+#         signal_class: cicd  # atlas-notify channel (optional)
 #       secrets:
 #         NOTIFY_TOKEN: ${{ secrets.NOTIFY_TOKEN }}
 #
 # `kind` controls which atlas-notify envelope is used:
 #   ci      -> alert        (generic CI pass/fail)
 #   deploy  -> pages_deploy (renders as a Pages deploy embed)
+#
+# `signal_class` selects the destination Discord channel via atlas-notify's
+# routing table. Leave blank for the default channel. Estate convention:
+#   cicd         CI results
+#   site_deploy  atlas-systems website deploys
+#   api_deploy   every other repo's deploy
+# Any failure is also mirrored to the alerts channel automatically.
 
 name: notify
 
@@ -38,6 +46,11 @@ on:
         default: ""
       url:
         description: "Deploy URL (only used when kind=deploy)"
+        required: false
+        type: string
+        default: ""
+      signal_class:
+        description: "atlas-notify routing class (cicd, api_deploy, site_deploy, ...). Blank routes to the default channel."
         required: false
         type: string
         default: ""
@@ -64,6 +77,7 @@ jobs:
           KIND: ${{ inputs.kind }}
           TITLE_OVERRIDE: ${{ inputs.title }}
           DEPLOY_URL: ${{ inputs.url }}
+          SIGNAL_CLASS: ${{ inputs.signal_class }}
         run: |
           set -euo pipefail
 
@@ -88,7 +102,9 @@ jobs:
               --arg branch  "${GITHUB_REF_NAME}" \
               --arg commit  "${GITHUB_SHA}" \
               --arg url     "${DEPLOY_URL:-https://github.com/${GITHUB_REPOSITORY}}" \
-              '{source:$source, status:$status, project:$project, branch:$branch, commit:$commit, url:$url}' \
+              --arg sclass  "$SIGNAL_CLASS" \
+              '{source:$source, status:$status, project:$project, branch:$branch, commit:$commit, url:$url}
+               + (if $sclass == "" then {} else {signal_class:$sclass} end)' \
             > payload.json
           else
             # alert envelope: generic CI report
@@ -112,8 +128,10 @@ jobs:
               --arg actor  "${GITHUB_ACTOR}" \
               --arg branch "${GITHUB_REF_NAME}" \
               --arg commit "$SHORT_SHA" \
+              --arg sclass "$SIGNAL_CLASS" \
               '{source:$source, level:$level, title:$title, message:$msg,
-                fields:{Run:$run, Actor:$actor, Branch:$branch, Commit:$commit}}' \
+                fields:{Run:$run, Actor:$actor, Branch:$branch, Commit:$commit}}
+               + (if $sclass == "" then {} else {signal_class:$sclass} end)' \
             > payload.json
           fi
 

@@ -6,3 +6,17 @@ DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/000000000000000000/REPLACE
 # Shared secret for all three auth dialects (Bearer, GitHub HMAC, cf-webhook-auth).
 # Generate one: openssl rand -hex 32
 NOTIFY_TOKEN="REPLACE_ME"
+
+# Optional per-channel webhooks. A payload's `signal_class` selects one of
+# these; an unset class degrades to DISCORD_WEBHOOK_URL. Any failure is also
+# mirrored to ALERTS_WEBHOOK_URL. Set only the ones you use.
+#   ramone         -> RAMONE_WEBHOOK_URL
+#   infra_health   -> INFRA_HEALTH_WEBHOOK_URL
+#   rag_queries    -> RAG_QUERIES_WEBHOOK_URL
+#   cicd           -> CICD_WEBHOOK_URL
+#   site_deploy    -> SITE_DEPLOY_WEBHOOK_URL   (atlas-systems website)
+#   api_deploy     -> API_DEPLOY_WEBHOOK_URL    (every other repo)
+#   alerts         -> ALERTS_WEBHOOK_URL        (failure mirror target)
+#   deps_security  -> DEPS_SECURITY_WEBHOOK_URL
+#   reviews        -> REVIEWS_WEBHOOK_URL
+#   quota_cost     -> QUOTA_COST_WEBHOOK_URL
