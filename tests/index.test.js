@@ -425,3 +425,95 @@ describe("signal-class channel routing (v1.1.0)", () => {
     expect((await res.json()).event).toBe("ramone");
   });
 });
+
+describe("estate pipeline channels and failure mirror (v1.2.0)", () => {
+  // Adds the pipeline routing classes and the failure mirror: any failure
+  // is copied to the alerts channel so one phone push covers the estate,
+  // while the topical channel still keeps the full history. The mirror is
+  // deduped against the primary webhook and never fires on success.
+  const PIPE_ENV = {
+    ...TEST_ENV,
+    CICD_WEBHOOK_URL: "https://discord.com/api/webhooks/cicd-id/cicd-token",
+    API_DEPLOY_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/apidep-id/apidep-token",
+    ALERTS_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/alerts-id/alerts-token",
+  };
+
+  function envelope(body) {
+    return new Request("https://api.atlas-systems.uk/notify", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("routes signal_class cicd to the ci-cd webhook", async () => {
+    mockDiscordSuccess("/api/webhooks/cicd-id/cicd-token");
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "cicd",
+        level: "success",
+        title: "CI passed: atlas-api-public",
+      }),
+      PIPE_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("cicd");
+  });
+
+  it("mirrors a failure to the alerts channel and its topical channel", async () => {
+    // Order proves the primary is posted first, then the mirror.
+    mockDiscordSuccess("/api/webhooks/apidep-id/apidep-token");
+    mockDiscordSuccess("/api/webhooks/alerts-id/alerts-token");
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "api_deploy",
+        level: "failure",
+        title: "Deploy failed: github-pulse",
+      }),
+      PIPE_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    // afterEach asserts both outbound calls (topical + mirror) happened.
+  });
+
+  it("does not mirror a success", async () => {
+    mockDiscordSuccess("/api/webhooks/apidep-id/apidep-token");
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "api_deploy",
+        level: "success",
+        title: "Deploy ok: github-pulse",
+      }),
+      PIPE_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    // Single outbound call (no mirror) enforced by afterEach.
+  });
+
+  it("does not double-post a failure already on the alerts channel", async () => {
+    mockDiscordSuccess("/api/webhooks/alerts-id/alerts-token");
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "alerts",
+        level: "failure",
+        title: "already on alerts",
+      }),
+      PIPE_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    // Deduped: single outbound call enforced by afterEach.
+  });
+});
