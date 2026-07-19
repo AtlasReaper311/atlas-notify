@@ -328,7 +328,16 @@ export default {
     // destination, and a class without a configured secret degrades to
     // the default webhook instead of dropping the event. Adding a
     // channel is one entry here plus one `wrangler secret put`.
-    const signalClass = payload?.signal_class ?? null;
+    // Envelope callers set signal_class explicitly. Native GitHub webhooks
+    // cannot, so derive it from the event type: dependency/security alerts go
+    // to the deps_security channel, issues and review requests to reviews.
+    let signalClass = payload?.signal_class ?? null;
+    if (auth.dialect === "github" && !signalClass) {
+      signalClass = githubSignalClass(
+        request.headers.get("x-github-event"),
+        payload,
+      );
+    }
     const CLASS_WEBHOOK_SECRETS = {
       ramone: "RAMONE_WEBHOOK_URL",
       infra_health: "INFRA_HEALTH_WEBHOOK_URL",
@@ -907,6 +916,93 @@ function formatGitHubEvent(eventName, payload) {
     };
   }
 
+  if (eventName === "dependabot_alert") {
+    const a = payload?.alert ?? {};
+    const action = payload?.action ?? "updated";
+    const pkg = a?.dependency?.package?.name ?? "dependency";
+    const sev =
+      a?.security_vulnerability?.severity ??
+      a?.security_advisory?.severity ??
+      "unknown";
+    const resolved = ["fixed", "dismissed", "auto_dismissed"].includes(action);
+    return {
+      title: truncate(
+        `Dependabot alert ${action}: ${payload?.repository?.full_name ?? ""}`,
+        LIMITS.title,
+      ),
+      description: truncate(a?.security_advisory?.summary ?? "", LIMITS.description),
+      color: resolved ? COLOURS.success : COLOURS.failure,
+      fields: compactFields([
+        { name: "Package", value: pkg, inline: true },
+        { name: "Severity", value: sev, inline: true },
+        { name: "Link", value: a?.html_url, inline: false },
+      ]),
+      footer: FOOTER,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  if (eventName === "secret_scanning_alert") {
+    const action = payload?.action ?? "updated";
+    const kind =
+      payload?.alert?.secret_type_display_name ??
+      payload?.alert?.secret_type ??
+      "secret";
+    return {
+      title: truncate(
+        `Secret scanning ${action}: ${payload?.repository?.full_name ?? ""}`,
+        LIMITS.title,
+      ),
+      description: truncate(`Detected type: ${kind}`, LIMITS.description),
+      color: action === "resolved" ? COLOURS.success : COLOURS.failure,
+      fields: compactFields([
+        { name: "Link", value: payload?.alert?.html_url, inline: false },
+      ]),
+      footer: FOOTER,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  if (eventName === "issues") {
+    const action = payload?.action ?? "";
+    const issue = payload?.issue ?? {};
+    return {
+      title: truncate(
+        `Issue ${action}: ${payload?.repository?.full_name ?? ""} #${issue?.number ?? "?"}`,
+        LIMITS.title,
+      ),
+      description: truncate(issue?.title ?? "", LIMITS.description),
+      color: action === "closed" ? COLOURS.success : COLOURS.info,
+      fields: compactFields([
+        { name: "Author", value: issue?.user?.login, inline: true },
+        { name: "Link", value: issue?.html_url, inline: false },
+      ]),
+      footer: FOOTER,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  if (eventName === "pull_request") {
+    const action = payload?.action ?? "";
+    const pr = payload?.pull_request ?? {};
+    const verb = action === "review_requested" ? "Review requested" : `PR ${action}`;
+    const merged = action === "closed" && pr?.merged;
+    return {
+      title: truncate(
+        `${verb}: ${payload?.repository?.full_name ?? ""} #${pr?.number ?? "?"}`,
+        LIMITS.title,
+      ),
+      description: truncate(pr?.title ?? "", LIMITS.description),
+      color: merged ? COLOURS.success : COLOURS.info,
+      fields: compactFields([
+        { name: "Author", value: pr?.user?.login, inline: true },
+        { name: "Link", value: pr?.html_url, inline: false },
+      ]),
+      footer: FOOTER,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   return {
     title: truncate(`GitHub event: ${eventName}`, LIMITS.title),
     description: truncate(
@@ -917,6 +1013,36 @@ function formatGitHubEvent(eventName, payload) {
     footer: FOOTER,
     timestamp: new Date().toISOString(),
   };
+}
+
+/**
+ * Derive the routing signal_class for a native GitHub webhook event so that
+ * security and review events reach their dedicated channels. Returns null for
+ * events that should stay in the default channel.
+ */
+function githubSignalClass(eventName, payload) {
+  switch (eventName) {
+    case "dependabot_alert":
+    case "secret_scanning_alert":
+    case "security_advisory":
+    case "repository_vulnerability_alert":
+      return "deps_security";
+    case "issues":
+      return ["opened", "reopened"].includes(payload?.action)
+        ? "reviews"
+        : null;
+    case "pull_request": {
+      const login = payload?.pull_request?.user?.login ?? "";
+      if (login === "dependabot[bot]") {
+        return ["opened", "reopened", "closed"].includes(payload?.action)
+          ? "deps_security"
+          : null;
+      }
+      return payload?.action === "review_requested" ? "reviews" : null;
+    }
+    default:
+      return null;
+  }
 }
 
 /**
