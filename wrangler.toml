@@ -30,4 +30,6 @@ id = "bcf2b463496f4f4fbb886ab2d10f225d"
 # Secrets (never in this file, never in source):
 #   npx wrangler secret put DISCORD_WEBHOOK_URL
 #   npx wrangler secret put NOTIFY_TOKEN
+# Optional channel webhooks; an unset class degrades to the default webhook:
+#   npx wrangler secret put RELIABILITY_WEBHOOK_URL
 # For local dev, copy .dev.vars.example to .dev.vars instead.
