@@ -517,3 +517,121 @@ describe("estate pipeline channels and failure mirror (v1.2.0)", () => {
     // Deduped: single outbound call enforced by afterEach.
   });
 });
+
+describe("GitHub event routing (v1.3.0)", () => {
+  const GH_ENV = {
+    ...TEST_ENV,
+    DEPS_SECURITY_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/deps-id/deps-token",
+    REVIEWS_WEBHOOK_URL: "https://discord.com/api/webhooks/rev-id/rev-token",
+  };
+
+  async function ghRequest(event, payload) {
+    const body = JSON.stringify(payload);
+    const signature = await signGitHubBody(body, TEST_TOKEN);
+    return new Request("https://api.atlas-systems.uk/notify", {
+      method: "POST",
+      headers: { "X-GitHub-Event": event, "X-Hub-Signature-256": signature },
+      body,
+    });
+  }
+
+  it("routes a dependabot_alert to the deps_security channel", async () => {
+    let captured = null;
+    mockDiscordSuccess("/api/webhooks/deps-id/deps-token", (b) => {
+      captured = b;
+    });
+    const res = await worker.fetch(
+      await ghRequest("dependabot_alert", {
+        action: "created",
+        alert: {
+          dependency: { package: { name: "lodash" } },
+          security_vulnerability: { severity: "high" },
+          security_advisory: { summary: "Prototype pollution" },
+          html_url: "https://github.com/x/y/security/dependabot/1",
+        },
+        repository: { full_name: "AtlasReaper311/x" },
+      }),
+      GH_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect(captured.embeds[0].title).toContain("Dependabot alert created");
+  });
+
+  it("routes an opened issue to the reviews channel", async () => {
+    mockDiscordSuccess("/api/webhooks/rev-id/rev-token");
+    const res = await worker.fetch(
+      await ghRequest("issues", {
+        action: "opened",
+        issue: {
+          number: 7,
+          title: "Bug",
+          user: { login: "atlas" },
+          html_url: "https://github.com/x/y/issues/7",
+        },
+        repository: { full_name: "AtlasReaper311/x" },
+      }),
+      GH_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("routes a review request to the reviews channel", async () => {
+    mockDiscordSuccess("/api/webhooks/rev-id/rev-token");
+    const res = await worker.fetch(
+      await ghRequest("pull_request", {
+        action: "review_requested",
+        pull_request: {
+          number: 3,
+          title: "Feature",
+          user: { login: "atlas" },
+          html_url: "https://github.com/x/y/pull/3",
+        },
+        repository: { full_name: "AtlasReaper311/x" },
+      }),
+      GH_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("routes a dependabot pull request to the deps_security channel", async () => {
+    mockDiscordSuccess("/api/webhooks/deps-id/deps-token");
+    const res = await worker.fetch(
+      await ghRequest("pull_request", {
+        action: "opened",
+        pull_request: {
+          number: 9,
+          title: "bump lodash",
+          user: { login: "dependabot[bot]" },
+          html_url: "https://github.com/x/y/pull/9",
+        },
+        repository: { full_name: "AtlasReaper311/x" },
+      }),
+      GH_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("leaves a push event on the default channel", async () => {
+    mockDiscordSuccess();
+    const res = await worker.fetch(
+      await ghRequest("push", {
+        ref: "refs/heads/main",
+        head_commit: {
+          id: "abc1234",
+          message: "do things",
+          url: "https://github.com/x/y/commit/abc1234",
+        },
+        repository: { full_name: "AtlasReaper311/x" },
+        pusher: { name: "atlas" },
+      }),
+      GH_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+  });
+});

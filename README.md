@@ -59,6 +59,17 @@ A payload may carry a `signal_class` that selects a dedicated Discord channel. E
 
 CI and deploy workflows set the class through the reusable [`notify.yml`](.github/workflows/notify.yml) `signal_class` input.
 
+### GitHub security and review events
+
+Native GitHub webhook events are classified automatically, no `signal_class` needed: `dependabot_alert`, `secret_scanning_alert`, `security_advisory`, and Dependabot pull requests route to `deps_security`; opened/reopened issues and `review_requested` pull requests route to `reviews`. Everything else stays on the default channel.
+
+To feed them, add a webhook on each repository (Settings, Webhooks, Add webhook):
+
+- Payload URL: `https://api.atlas-systems.uk/notify`
+- Content type: `application/json`
+- Secret: the same value as `NOTIFY_TOKEN` (the router verifies the `X-Hub-Signature-256` HMAC)
+- Events: select individual events and tick Dependabot alerts, Secret scanning alerts, Security advisories, Issues, and Pull requests
+
 ## Prerequisites
 
 - Node 22+ and `npx` (wrangler runs through it, no global install; the test toolchain specifically requires 22+)
