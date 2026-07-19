@@ -333,10 +333,19 @@ export default {
     // to the deps_security channel, issues and review requests to reviews.
     let signalClass = payload?.signal_class ?? null;
     if (auth.dialect === "github" && !signalClass) {
-      signalClass = githubSignalClass(
-        request.headers.get("x-github-event"),
-        payload,
-      );
+      const ghEvent = request.headers.get("x-github-event");
+      signalClass = githubSignalClass(ghEvent, payload);
+      // issues and pull_request deliver every action (synchronize, label,
+      // assign). Only the actions that map to a channel are wanted; drop the
+      // rest rather than flood the default channel, so a repo can subscribe to
+      // the full event stream without noise.
+      if (!signalClass && (ghEvent === "issues" || ghEvent === "pull_request")) {
+        return json(
+          200,
+          { ok: true, dialect: "github", event: `github:${ghEvent}`, ignored: true },
+          corsHeaders(request),
+        );
+      }
     }
     const CLASS_WEBHOOK_SECRETS = {
       ramone: "RAMONE_WEBHOOK_URL",

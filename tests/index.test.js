@@ -635,3 +635,30 @@ describe("GitHub event routing (v1.3.0)", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("GitHub event filtering", () => {
+  async function ghReq(event, payload) {
+    const body = JSON.stringify(payload);
+    const signature = await signGitHubBody(body, TEST_TOKEN);
+    return new Request("https://api.atlas-systems.uk/notify", {
+      method: "POST",
+      headers: { "X-GitHub-Event": event, "X-Hub-Signature-256": signature },
+      body,
+    });
+  }
+
+  it("drops a pull_request action that maps to no channel, no post", async () => {
+    const res = await worker.fetch(
+      await ghReq("pull_request", {
+        action: "synchronize",
+        pull_request: { number: 5, title: "wip", user: { login: "atlas" } },
+        repository: { full_name: "AtlasReaper311/x" },
+      }),
+      TEST_ENV,
+      ctx,
+    );
+    expect(res.status).toBe(200);
+    expect((await res.json()).ignored).toBe(true);
+    // afterEach asserts zero outbound calls.
+  });
+});
