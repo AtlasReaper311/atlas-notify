@@ -635,3 +635,94 @@ describe("GitHub event routing (v1.3.0)", () => {
     expect(res.status).toBe(200);
   });
 });
+
+describe("reliability signal class (v1.2.0)", () => {
+  // The producer (atlas-api-public's evaluator) owns deduplication,
+  // cooldown, and storm suppression; these tests prove the router side:
+  // a dedicated channel when configured, default-webhook degradation when
+  // not, a bespoke formatter that keeps wide fields readable, and the
+  // failure mirror that gives the alerts channel its single phone push.
+  const RELIABILITY_ENV = {
+    ...TEST_ENV,
+    RELIABILITY_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/reliability-id/reliability-token",
+  };
+
+  function reliabilityEnvelope(overrides = {}) {
+    return new Request("https://api.atlas-systems.uk/notify", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${TEST_TOKEN}`,
+      },
+      body: JSON.stringify({
+        source: "alert",
+        signal_class: "reliability",
+        level: "warning",
+        title: "Reliability: atlas-notify is budget at risk",
+        message: "fast burn rate 2.78 is at or above the risk threshold",
+        fields: {
+          service: "atlas-notify",
+          objective: "atlas-notify-availability-30d",
+          from_state: "objective_met",
+          to_state: "budget_at_risk",
+          remaining_budget: "0.8634",
+          fast_burn: "2.78",
+          slow_burn: "0.56",
+          runbook: "atlas-infra/docs/runbooks/reliability-budget-exhausted.md",
+          dedup_key:
+            "reliability:atlas-notify:atlas-notify-availability-30d:objective_met->budget_at_risk:2026-07-19",
+        },
+        ...overrides,
+      }),
+    });
+  }
+
+  it("routes to the dedicated webhook and renders the bespoke formatter", async () => {
+    let captured = null;
+    mockDiscordSuccess("/api/webhooks/reliability-id/reliability-token", (body) => {
+      captured = body;
+    });
+
+    const res = await worker.fetch(reliabilityEnvelope(), RELIABILITY_ENV, ctx);
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("reliability");
+
+    const embed = captured.embeds[0];
+    expect(embed.title).toBe("Reliability: atlas-notify is budget at risk");
+    const runbook = embed.fields.find((field) => field.name === "runbook");
+    expect(runbook.inline).toBe(false);
+    expect(runbook.value).toMatch(/reliability-budget-exhausted\.md$/);
+    const service = embed.fields.find((field) => field.name === "service");
+    expect(service.inline).toBe(true);
+  });
+
+  it("degrades to the default webhook when the class secret is unset", async () => {
+    mockDiscordSuccess();
+    const res = await worker.fetch(reliabilityEnvelope(), TEST_ENV, ctx);
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("reliability");
+  });
+
+  it("mirrors a failure-level reliability event to the alerts channel", async () => {
+    const env = {
+      ...RELIABILITY_ENV,
+      ALERTS_WEBHOOK_URL:
+        "https://discord.com/api/webhooks/alerts-id/alerts-token",
+    };
+    mockDiscordSuccess("/api/webhooks/reliability-id/reliability-token");
+    mockDiscordSuccess("/api/webhooks/alerts-id/alerts-token");
+
+    const waitCtx = makeWaitCtx();
+    const res = await worker.fetch(
+      reliabilityEnvelope({
+        level: "failure",
+        title: "Reliability: atlas-notify is budget exhausted",
+      }),
+      env,
+      waitCtx.ctx,
+    );
+    expect(res.status).toBe(200);
+    await waitCtx.wait();
+  });
+});

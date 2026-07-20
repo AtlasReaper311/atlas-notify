@@ -74,7 +74,7 @@ const META = {
   name: "atlas-notify",
   description:
     "Centralised event router for the Atlas Systems stack: payload dialects in, Discord embeds out",
-  version: "1.1.0",
+  version: "1.2.0",
   endpoints: [
     { method: "POST", path: "/notify", description: "Deliver an event into the Discord pipeline; Bearer NOTIFY_TOKEN required" },
     { method: "GET", path: "/notify/recent", description: "Recent events feed with optional ?limit= and ?level= filters" },
@@ -352,6 +352,7 @@ export default {
       deps_security: "DEPS_SECURITY_WEBHOOK_URL",
       reviews: "REVIEWS_WEBHOOK_URL",
       quota_cost: "QUOTA_COST_WEBHOOK_URL",
+      reliability: "RELIABILITY_WEBHOOK_URL",
     };
     const classSecretName = CLASS_WEBHOOK_SECRETS[signalClass];
     const webhookUrl =
@@ -848,6 +849,33 @@ const ENVELOPE_FORMATTERS = {
           inline: true,
         })),
       ),
+      footer: FOOTER,
+      timestamp: new Date().toISOString(),
+    };
+  },
+
+  /**
+   * Reliability transitions from the atlas-api-public evaluator. The
+   * producer owns deduplication, cooldown, and storm suppression; this
+   * formatter only renders the bounded evidence it is handed: the
+   * transition, budget position, burn rates, and the runbook reference.
+   * A wide field like the runbook path renders full-width; the compact
+   * numbers stay inline.
+   */
+  reliability(p) {
+    const colour =
+      COLOURS[p.level] ??
+      (p.level === "error" ? COLOURS.failure : COLOURS.info);
+    const fields = [];
+    const wide = new Set(["runbook", "services", "dedup_key"]);
+    for (const [name, value] of Object.entries(p.fields ?? {})) {
+      fields.push({ name, value: String(value), inline: !wide.has(name) });
+    }
+    return {
+      title: truncate(p.title ?? "Reliability event", LIMITS.title),
+      description: truncate(p.message ?? "", LIMITS.description),
+      color: colour,
+      fields: compactFields(fields),
       footer: FOOTER,
       timestamp: new Date().toISOString(),
     };

@@ -56,6 +56,7 @@ A payload may carry a `signal_class` that selects a dedicated Discord channel. E
 | `deps_security` | `DEPS_SECURITY_WEBHOOK_URL` | Dependabot and security alerts |
 | `reviews` | `REVIEWS_WEBHOOK_URL` | issues and review requests |
 | `quota_cost` | `QUOTA_COST_WEBHOOK_URL` | quota and cost transitions |
+| `reliability` | `RELIABILITY_WEBHOOK_URL` | error-budget and burn-rate transitions from the atlas-api-public evaluator; the producer owns deduplication, cooldown, and storm suppression |
 
 CI and deploy workflows set the class through the reusable [`notify.yml`](.github/workflows/notify.yml) `signal_class` input.
 
