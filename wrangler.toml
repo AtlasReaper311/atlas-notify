@@ -5,7 +5,7 @@
 # that resolves through the Cloudflare proxy, so the api subdomain needs
 # a proxied DNS record (see README, Setup step 1).
 name = "atlas-notify"
-main = "src/index.js"
+main = "src/router.js"
 compatibility_date = "2025-09-01"
 # No workers.dev subdomain: this Worker is reachable only on the routed
 # production hostname, which keeps the auth surface to one URL.
@@ -31,5 +31,6 @@ id = "bcf2b463496f4f4fbb886ab2d10f225d"
 #   npx wrangler secret put DISCORD_WEBHOOK_URL
 #   npx wrangler secret put NOTIFY_TOKEN
 # Optional channel webhooks; an unset class degrades to the default webhook:
+#   npx wrangler secret put GARDENER_WEBHOOK_URL
 #   npx wrangler secret put RELIABILITY_WEBHOOK_URL
 # For local dev, copy .dev.vars.example to .dev.vars instead.
