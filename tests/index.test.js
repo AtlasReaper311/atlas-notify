@@ -581,6 +581,81 @@ describe("GitHub event routing (v1.3.0)", () => {
     expect(captured.embeds[0].title).toContain("Dependabot alert created");
   });
 
+  it("renders a security_advisory with useful fields and mirrors high severity", async () => {
+    const waitCtx = makeWaitCtx();
+    const env = {
+      ...GH_ENV,
+      ALERTS_WEBHOOK_URL: "https://discord.com/api/webhooks/alerts-id/alerts-token",
+    };
+    let captured = null;
+    mockDiscordSuccess("/api/webhooks/deps-id/deps-token", (b) => {
+      captured = b;
+    });
+    mockDiscordSuccess("/api/webhooks/alerts-id/alerts-token");
+    const res = await worker.fetch(
+      await ghRequest("security_advisory", {
+        action: "published",
+        security_advisory: {
+          ghsa_id: "GHSA-abcd-1234",
+          cve_id: "CVE-2026-12345",
+          severity: "high",
+          summary: "Example dependency advisory",
+          html_url: "https://github.com/advisories/GHSA-abcd-1234",
+        },
+        repository: { full_name: "AtlasReaper311/example" },
+      }),
+      env,
+      waitCtx.ctx,
+    );
+    expect(res.status).toBe(200);
+    await waitCtx.wait();
+    expect(captured.embeds[0].title).toContain("Security advisory published");
+    expect(captured.embeds[0].description).toBe("Example dependency advisory");
+    expect(captured.embeds[0].fields).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Severity", value: "high" }),
+        expect.objectContaining({ name: "GHSA", value: "GHSA-abcd-1234" }),
+        expect.objectContaining({ name: "CVE", value: "CVE-2026-12345" }),
+        expect.objectContaining({ name: "Repo", value: "AtlasReaper311/example" }),
+      ]),
+    );
+  });
+
+  it("dedupes identical security_advisory deliveries", async () => {
+    const { env } = makeLogEnv();
+    env.DEPS_SECURITY_WEBHOOK_URL = GH_ENV.DEPS_SECURITY_WEBHOOK_URL;
+    mockDiscordSuccess("/api/webhooks/deps-id/deps-token");
+    const payload = {
+      action: "published",
+      security_advisory: {
+        ghsa_id: "GHSA-dupe-1234",
+        severity: "medium",
+        summary: "Repeated advisory",
+        html_url: "https://github.com/advisories/GHSA-dupe-1234",
+      },
+    };
+
+    const first = await worker.fetch(
+      await ghRequest("security_advisory", payload),
+      env,
+      ctx,
+    );
+    const second = await worker.fetch(
+      await ghRequest("security_advisory", payload),
+      env,
+      ctx,
+    );
+
+    expect(first.status).toBe(200);
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({
+      ok: true,
+      dialect: "github",
+      event: "github:security_advisory",
+      deduped: true,
+    });
+  });
+
   it("routes an opened issue to the reviews channel", async () => {
     mockDiscordSuccess("/api/webhooks/rev-id/rev-token");
     const res = await worker.fetch(
