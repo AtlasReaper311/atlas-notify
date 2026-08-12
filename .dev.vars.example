@@ -20,3 +20,5 @@ NOTIFY_TOKEN="REPLACE_ME"
 #   deps_security  -> DEPS_SECURITY_WEBHOOK_URL
 #   reviews        -> REVIEWS_WEBHOOK_URL
 #   quota_cost     -> QUOTA_COST_WEBHOOK_URL
+#   reliability    -> RELIABILITY_WEBHOOK_URL
+#   gardener       -> GARDENER_WEBHOOK_URL

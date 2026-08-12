@@ -3,9 +3,9 @@
  *
  * Centralised event router for the Atlas Systems stack. Every service
  * POSTs events here; this Worker normalises them into Discord embeds
- * and forwards them to a single webhook. It also persists a rolling
+ * and forwards them to routed Discord webhooks. It also persists a rolling
  * window of recent events to KV so the Lab page can render a Failure
- * log — the historical companion to the home page's "is it up now"
+ * log, the historical companion to the home page's "is it up now"
  * indicator.
  *
  * Three inbound dialects share one NOTIFY_TOKEN secret:
@@ -110,7 +110,7 @@ export default {
     }
 
     // Recent events feed for the Lab page Failure log. Read-only,
-    // unauthenticated (same trust posture as /pulse — the data is
+    // unauthenticated (same trust posture as /pulse, the data is
     // already destined for a public webhook), CORS-restricted to the
     // site origins so other sites can't quietly build on this cache.
     if (request.method === "GET" && url.pathname.endsWith("/notify/recent")) {
@@ -353,6 +353,7 @@ export default {
       reviews: "REVIEWS_WEBHOOK_URL",
       quota_cost: "QUOTA_COST_WEBHOOK_URL",
       reliability: "RELIABILITY_WEBHOOK_URL",
+      gardener: "GARDENER_WEBHOOK_URL",
     };
     const classSecretName = CLASS_WEBHOOK_SECRETS[signalClass];
     const webhookUrl =
@@ -430,7 +431,7 @@ export default {
 /* ------------------------------------------------------------------ */
 
 /**
- * GET /notify/recent — last N events as JSON for the Lab page.
+ * GET /notify/recent, last N events as JSON for the Lab page.
  * Query params:
  *   ?limit=<1..50>          how many to return (default 10)
  *   ?level=<success|info|warning|failure>   filter by level (optional,
@@ -438,7 +439,7 @@ export default {
  */
 async function handleRecent(url, env, cors) {
   if (!env.NOTIFY_LOG) {
-    // KV not bound — fail informatively rather than silently empty.
+    // KV not bound, fail informatively rather than silently empty.
     return json(
       503,
       { ok: false, error: "NOTIFY_LOG KV not bound; see wrangler.toml" },
@@ -458,7 +459,7 @@ async function handleRecent(url, env, cors) {
   const wantLevels = levelParams.length ? new Set(levelParams) : null;
 
   // Declared without an initial value so the catch branch is the only
-  // other place that assigns it — keeps the linter happy and avoids
+  // other place that assigns it, keeps the linter happy and avoids
   // a dead initial assignment.
   let events;
   try {
