@@ -54,6 +54,7 @@ A payload may carry a `signal_class` that selects a dedicated Discord channel. E
 | `api_deploy` | `API_DEPLOY_WEBHOOK_URL` | every other repo's deploy |
 | `alerts` | `ALERTS_WEBHOOK_URL` | failure mirror target |
 | `deps_security` | `DEPS_SECURITY_WEBHOOK_URL` | Dependabot and security alerts |
+| `security_advisory` | `SECURITY_ADVISORIES_WEBHOOK_URL` | global GitHub Advisory Database publications and updates |
 | `reviews` | `REVIEWS_WEBHOOK_URL` | issues and review requests |
 | `quota_cost` | `QUOTA_COST_WEBHOOK_URL` | quota and cost transitions |
 | `reliability` | `RELIABILITY_WEBHOOK_URL` | error-budget and burn-rate transitions from the atlas-api-public evaluator; the producer owns deduplication, cooldown, and storm suppression |
@@ -63,7 +64,7 @@ CI and deploy workflows set the class through the reusable [`notify.yml`](.githu
 
 ### GitHub security and review events
 
-Native GitHub webhook events are classified automatically, no `signal_class` needed: `dependabot_alert`, `secret_scanning_alert`, `security_advisory`, and Dependabot pull requests route to `deps_security`; opened/reopened issues and `review_requested` pull requests route to `reviews`. Everything else stays on the default channel.
+Native GitHub webhook events are classified automatically, no `signal_class` needed: `dependabot_alert`, `secret_scanning_alert`, and Dependabot pull requests route to `deps_security`; global `security_advisory` events route to `security_advisory`; opened/reopened issues and `review_requested` pull requests route to `reviews`. Everything else stays on the default channel.
 
 To feed them, add a webhook on each repository (Settings, Webhooks, Add webhook):
 

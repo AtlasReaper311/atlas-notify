@@ -350,6 +350,7 @@ export default {
       api_deploy: "API_DEPLOY_WEBHOOK_URL",
       alerts: "ALERTS_WEBHOOK_URL",
       deps_security: "DEPS_SECURITY_WEBHOOK_URL",
+      security_advisory: "SECURITY_ADVISORIES_WEBHOOK_URL",
       reviews: "REVIEWS_WEBHOOK_URL",
       quota_cost: "QUOTA_COST_WEBHOOK_URL",
       reliability: "RELIABILITY_WEBHOOK_URL",
@@ -1102,9 +1103,10 @@ function githubSignalClass(eventName, payload) {
   switch (eventName) {
     case "dependabot_alert":
     case "secret_scanning_alert":
-    case "security_advisory":
     case "repository_vulnerability_alert":
       return "deps_security";
+    case "security_advisory":
+      return "security_advisory";
     case "issues":
       return ["opened", "reopened"].includes(payload?.action)
         ? "reviews"

@@ -545,6 +545,8 @@ describe("GitHub event routing (v1.3.0)", () => {
     ...TEST_ENV,
     DEPS_SECURITY_WEBHOOK_URL:
       "https://discord.com/api/webhooks/deps-id/deps-token",
+    SECURITY_ADVISORIES_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/security-id/security-token",
     REVIEWS_WEBHOOK_URL: "https://discord.com/api/webhooks/rev-id/rev-token",
   };
 
@@ -588,7 +590,7 @@ describe("GitHub event routing (v1.3.0)", () => {
       ALERTS_WEBHOOK_URL: "https://discord.com/api/webhooks/alerts-id/alerts-token",
     };
     let captured = null;
-    mockDiscordSuccess("/api/webhooks/deps-id/deps-token", (b) => {
+    mockDiscordSuccess("/api/webhooks/security-id/security-token", (b) => {
       captured = b;
     });
     mockDiscordSuccess("/api/webhooks/alerts-id/alerts-token");
@@ -623,8 +625,8 @@ describe("GitHub event routing (v1.3.0)", () => {
 
   it("dedupes identical security_advisory deliveries", async () => {
     const { env } = makeLogEnv();
-    env.DEPS_SECURITY_WEBHOOK_URL = GH_ENV.DEPS_SECURITY_WEBHOOK_URL;
-    mockDiscordSuccess("/api/webhooks/deps-id/deps-token");
+    env.SECURITY_ADVISORIES_WEBHOOK_URL = GH_ENV.SECURITY_ADVISORIES_WEBHOOK_URL;
+    mockDiscordSuccess("/api/webhooks/security-id/security-token");
     const payload = {
       action: "published",
       security_advisory: {
