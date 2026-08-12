@@ -67,6 +67,7 @@ const RECENT_KEY = "notify:recent:v1";
 const RECENT_MAX = 200;
 const RECENT_PAGE_DEFAULT = 10;
 const RECENT_PAGE_MAX = 50;
+const GITHUB_SECURITY_ADVISORY_DEDUPE_TTL_SECONDS = 30 * 60;
 
 const VALID_LEVELS = new Set(["success", "info", "warning", "failure"]);
 
@@ -332,11 +333,10 @@ export default {
     // cannot, so derive it from the event type: dependency/security alerts go
     // to the deps_security channel, issues and review requests to reviews.
     let signalClass = payload?.signal_class ?? null;
+    const githubEventName =
+      auth.dialect === "github" ? request.headers.get("x-github-event") : null;
     if (auth.dialect === "github" && !signalClass) {
-      signalClass = githubSignalClass(
-        request.headers.get("x-github-event"),
-        payload,
-      );
+      signalClass = githubSignalClass(githubEventName, payload);
     }
     const CLASS_WEBHOOK_SECRETS = {
       ramone: "RAMONE_WEBHOOK_URL",
@@ -358,6 +358,14 @@ export default {
     const classSecretName = CLASS_WEBHOOK_SECRETS[signalClass];
     const webhookUrl =
       (classSecretName && env[classSecretName]) || env.DISCORD_WEBHOOK_URL;
+
+    if (await shouldSuppressDuplicateGitHubEvent(env, githubEventName, payload)) {
+      return json(
+        200,
+        { ok: true, dialect: auth.dialect, event: eventLabel, deduped: true },
+        corsHeaders(request),
+      );
+    }
 
     if (
       payload?.persist_only === true &&
@@ -971,6 +979,47 @@ function formatGitHubEvent(eventName, payload) {
     };
   }
 
+  if (eventName === "security_advisory") {
+    const advisory =
+      payload?.security_advisory ??
+      payload?.repository_advisory ??
+      payload?.advisory ??
+      {};
+    const action = payload?.action ?? "updated";
+    const repo = payload?.repository?.full_name;
+    const title =
+      advisory?.summary ??
+      advisory?.description ??
+      advisory?.ghsa_id ??
+      advisory?.cve_id ??
+      "GitHub security advisory";
+    const severity = advisory?.severity ?? "unknown";
+    const withdrawn = ["withdrawn", "unpublished"].includes(action);
+    return {
+      title: truncate(
+        `Security advisory ${action}: ${repo ?? advisory?.ghsa_id ?? "GitHub"}`,
+        LIMITS.title,
+      ),
+      description: truncate(title, LIMITS.description),
+      color: withdrawn
+        ? COLOURS.success
+        : ["critical", "high"].includes(String(severity).toLowerCase())
+          ? COLOURS.failure
+          : ["medium", "moderate", "low"].includes(String(severity).toLowerCase())
+            ? COLOURS.warning
+            : COLOURS.info,
+      fields: compactFields([
+        { name: "Severity", value: severity, inline: true },
+        { name: "GHSA", value: advisory?.ghsa_id, inline: true },
+        { name: "CVE", value: advisory?.cve_id, inline: true },
+        { name: "Repo", value: repo, inline: true },
+        { name: "Link", value: securityAdvisoryUrl(advisory), inline: false },
+      ]),
+      footer: FOOTER,
+      timestamp: new Date().toISOString(),
+    };
+  }
+
   if (eventName === "secret_scanning_alert") {
     const action = payload?.action ?? "updated";
     const kind =
@@ -1175,6 +1224,54 @@ async function purgePulseCache(env) {
   } catch {
     // best-effort; the hourly TTL is still the fallback if this fails
   }
+}
+
+async function shouldSuppressDuplicateGitHubEvent(env, eventName, payload) {
+  if (!env.NOTIFY_LOG || eventName !== "security_advisory") return false;
+
+  const advisory =
+    payload?.security_advisory ??
+    payload?.repository_advisory ??
+    payload?.advisory ??
+    {};
+  const fingerprint = JSON.stringify({
+    eventName,
+    action: payload?.action ?? "",
+    repo: payload?.repository?.full_name ?? "",
+    ghsa: advisory?.ghsa_id ?? "",
+    cve: advisory?.cve_id ?? "",
+    url: securityAdvisoryUrl(advisory) ?? "",
+    summary: advisory?.summary ?? advisory?.description ?? "",
+  });
+  const key = `notify:dedupe:github-security-advisory:${await sha256Hex(fingerprint)}`;
+
+  try {
+    if (await env.NOTIFY_LOG.get(key)) return true;
+    await env.NOTIFY_LOG.put(key, "1", {
+      expirationTtl: GITHUB_SECURITY_ADVISORY_DEDUPE_TTL_SECONDS,
+    });
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function securityAdvisoryUrl(advisory) {
+  return (
+    advisory?.html_url ??
+    advisory?.url ??
+    advisory?.references?.[0]?.url ??
+    advisory?.references?.[0] ??
+    null
+  );
+}
+
+async function sha256Hex(value) {
+  const enc = new TextEncoder();
+  const digest = await crypto.subtle.digest("SHA-256", enc.encode(value));
+  return [...new Uint8Array(digest)]
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 /** Terminal-styled HTML view of the API index for browser visitors. */
