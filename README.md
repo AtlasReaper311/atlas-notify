@@ -7,7 +7,7 @@
 ```
 ┌─────────────────────────────────────────────┐
 │  ATLAS SYSTEMS // atlas-notify              │
-│  one endpoint in, one Discord channel out   │
+│  one endpoint in, routed Discord channels   │
 └─────────────────────────────────────────────┘
 ```
 
@@ -16,13 +16,13 @@
 ![Runtime](https://img.shields.io/badge/runtime-workers-4ade80?style=flat-square&labelColor=0a0a0f)
 ![Cost](https://img.shields.io/badge/cost-%C2%A30-aaa9a0?style=flat-square&labelColor=0a0a0f)
 
-Centralised event router for the Atlas Systems stack. Services POST events to one authenticated endpoint; this Worker normalises them into colour-coded Discord embeds and forwards them to a single webhook.
+Centralised event router for the Atlas Systems stack. Services POST events to one authenticated endpoint; this Worker normalises them into colour-coded Discord embeds and forwards them to a configured Discord webhook by signal class.
 
 ```
 Pages deploys ─┐
 GitHub pushes ─┤
-Docker health ─┼──▶  api.atlas-systems.uk/notify  ──▶  Discord #push-log
-Anything else ─┘         (auth, validate, format)
+Docker health ─┼──▶  api.atlas-systems.uk/notify  ──▶  routed Discord channels
+Anything else ─┘         (auth, validate, format, route)
 ```
 
 Green for success, red for failure, amber for warnings, grey for neutral events. Unknown but authenticated events still get delivered as amber embeds; the router's job is visibility, not gatekeeping.
@@ -57,6 +57,7 @@ A payload may carry a `signal_class` that selects a dedicated Discord channel. E
 | `reviews` | `REVIEWS_WEBHOOK_URL` | issues and review requests |
 | `quota_cost` | `QUOTA_COST_WEBHOOK_URL` | quota and cost transitions |
 | `reliability` | `RELIABILITY_WEBHOOK_URL` | error-budget and burn-rate transitions from the atlas-api-public evaluator; the producer owns deduplication, cooldown, and storm suppression |
+| `gardener` | `GARDENER_WEBHOOK_URL` | Gardener controller summaries and remediation outcomes |
 
 CI and deploy workflows set the class through the reusable [`notify.yml`](.github/workflows/notify.yml) `signal_class` input.
 
@@ -69,7 +70,7 @@ To feed them, add a webhook on each repository (Settings, Webhooks, Add webhook)
 - Payload URL: `https://api.atlas-systems.uk/notify`
 - Content type: `application/json`
 - Secret: the same value as `NOTIFY_TOKEN` (the router verifies the `X-Hub-Signature-256` HMAC)
-- Events: select individual events and tick Dependabot alerts, Secret scanning alerts, Security advisories, Issues, and Pull requests
+- Events: select individual events and tick Pushes, Dependabot alerts, Secret scanning alerts, Security advisories, Issues, Pull requests, and Repository vulnerability alerts when GitHub exposes that box
 
 ## Prerequisites
 

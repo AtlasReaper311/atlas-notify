@@ -16,7 +16,7 @@
  * these tests never depend on, or risk leaking, a real webhook URL.
  */
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import worker from "../src/index.js";
+import worker from "../src/router.js";
 
 // Stub ExecutionContext. waitUntil is a no-op because the promises it
 // would receive (KV writes, pulse purges) are best-effort and not the
@@ -318,7 +318,7 @@ describe("request validation", () => {
 });
 
 describe("signal-class channel routing (v1.1.0)", () => {
-  // The routing table lives in src/index.js as CLASS_WEBHOOK_SECRETS.
+  // The routing table lives in the Worker entrypoint as CLASS_WEBHOOK_SECRETS.
   // These tests prove three things: a configured class reaches its own
   // webhook, an unconfigured class degrades to the default webhook, and
   // a classed alert renders through the generic alert formatter rather
@@ -331,6 +331,8 @@ describe("signal-class channel routing (v1.1.0)", () => {
       "https://discord.com/api/webhooks/rag-id/rag-token",
     RAMONE_WEBHOOK_URL:
       "https://discord.com/api/webhooks/ramone-id/ramone-token",
+    GARDENER_WEBHOOK_URL:
+      "https://discord.com/api/webhooks/gardener-id/gardener-token",
   };
 
   function envelope(body) {
@@ -389,6 +391,26 @@ describe("signal-class channel routing (v1.1.0)", () => {
 
     expect(res.status).toBe(200);
     expect((await res.json()).event).toBe("rag_queries");
+  });
+
+  it("routes persist_only gardener events to the gardener webhook", async () => {
+    mockDiscordSuccess("/api/webhooks/gardener-id/gardener-token");
+
+    const res = await worker.fetch(
+      envelope({
+        source: "alert",
+        signal_class: "gardener",
+        level: "info",
+        title: "Gardener controller completed",
+        message: "Controller finished without proposing a change",
+        persist_only: true,
+      }),
+      ROUTED_ENV,
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("gardener");
   });
 
   it("falls back to the default webhook when the class secret is unset", async () => {
