@@ -206,6 +206,124 @@ describe("envelope dialect (Bearer token)", () => {
   });
 });
 
+describe("per-day recent buffer", () => {
+  // A store-exposing variant of makeLogEnv, so these tests can assert
+  // which KV keys were actually written rather than only what reads back.
+  function makeInspectableLogEnv(seed = {}) {
+    const store = new Map(Object.entries(seed));
+    return {
+      store,
+      env: {
+        ...TEST_ENV,
+        NOTIFY_LOG: {
+          get: async (key) => store.get(key) ?? null,
+          put: async (key, value) => store.set(key, value),
+        },
+      },
+    };
+  }
+
+  async function persist(env, waitCtx, title) {
+    const res = await worker.fetch(
+      new Request("https://api.atlas-systems.uk/notify", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${TEST_TOKEN}` },
+        body: JSON.stringify({
+          source: "alert",
+          level: "info",
+          title,
+          message: title,
+          persist_only: true,
+        }),
+      }),
+      env,
+      waitCtx.ctx,
+    );
+    expect(res.status).toBe(200);
+  }
+
+  async function readRecent(env, waitCtx, query = "limit=200") {
+    const res = await worker.fetch(
+      new Request(`https://api.atlas-systems.uk/notify/recent?${query}`),
+      env,
+      waitCtx.ctx,
+    );
+    return res.json();
+  }
+
+  it("writes under a per-day key rather than the legacy single key", async () => {
+    const { env, store } = makeInspectableLogEnv();
+    const waitCtx = makeWaitCtx();
+    await persist(env, waitCtx, "Deployed: ramone-edge");
+    await waitCtx.wait();
+
+    const keys = [...store.keys()];
+    const today = new Date().toISOString().slice(0, 10);
+    expect(keys).toContain(`notify:recent:v2:${today}`);
+    expect(keys).not.toContain("notify:recent:v1");
+  });
+
+  it("keeps an earlier day intact when a later day is overwritten", async () => {
+    // This is the regression the split exists for. A same-day burst can
+    // still clobber its own key, but it must not be able to erase the
+    // history the digest reaches back through.
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const { env, store } = makeInspectableLogEnv({
+      [`notify:recent:v2:${yesterday}`]: JSON.stringify([
+        { ts: `${yesterday}T09:00:00.000Z`, level: "info", event: "alert", title: "yesterday survived" },
+      ]),
+    });
+    const waitCtx = makeWaitCtx();
+
+    await persist(env, waitCtx, "today one");
+    await persist(env, waitCtx, "today two");
+    await waitCtx.wait();
+
+    const body = await readRecent(env, waitCtx);
+    const titles = body.events.map((e) => e.title);
+    expect(titles).toContain("yesterday survived");
+    expect(store.get(`notify:recent:v2:${yesterday}`)).toContain("yesterday survived");
+  });
+
+  it("still surfaces history written under the legacy key", async () => {
+    const { env } = makeInspectableLogEnv({
+      "notify:recent:v1": JSON.stringify([
+        { ts: "2026-08-17T03:16:48.050Z", level: "info", event: "github:pull_request", title: "legacy entry" },
+      ]),
+    });
+    const waitCtx = makeWaitCtx();
+    const body = await readRecent(env, waitCtx);
+    expect(body.events.map((e) => e.title)).toContain("legacy entry");
+  });
+
+  it("persists the resolved signal_class so consumers can filter on it", async () => {
+    const { env } = makeInspectableLogEnv();
+    const waitCtx = makeWaitCtx();
+    await persist(env, waitCtx, "Deployed: ramone-edge");
+    await waitCtx.wait();
+
+    const body = await readRecent(env, waitCtx);
+    expect(body.events[0]).toHaveProperty("signal_class");
+  });
+
+  it("serves a page larger than the old fifty-event ceiling", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const seeded = Array.from({ length: 120 }, (_, i) => ({
+      ts: `${today}T00:00:00.000Z`,
+      level: "info",
+      event: "alert",
+      title: `event ${i}`,
+    }));
+    const { env } = makeInspectableLogEnv({
+      [`notify:recent:v2:${today}`]: JSON.stringify(seeded),
+    });
+    const waitCtx = makeWaitCtx();
+
+    const body = await readRecent(env, waitCtx, "limit=120");
+    expect(body.returned).toBe(120);
+  });
+});
+
 describe("GitHub dialect (HMAC)", () => {
   it("rejects a request missing the signature header", async () => {
     const body = JSON.stringify({ zen: "test", repository: { full_name: "x/y" } });

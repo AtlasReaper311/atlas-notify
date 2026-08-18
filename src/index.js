@@ -59,14 +59,35 @@ const LIMITS = {
 const MAX_BODY_BYTES = 64 * 1024;
 
 // Recent-events ring buffer. Stored as a single JSON array under one KV
-// key. A single key keeps the read endpoint to one KV op (cheap, fast)
-// and the cap keeps the document under KV's 25 MB value ceiling by many
-// orders of magnitude. 200 entries is roughly a month of typical events
-// without becoming a log file.
+// key. The single-key design is retained only for reading historical
+// entries: it lost history exactly when history mattered most. KV
+// read-modify-write is not atomic, and a dependency-bump batch lands
+// many events within seconds, so concurrent writers each read the same
+// stale array and the last write wins. Observed on 2026-08-18: the live
+// buffer held 25 events whose history began precisely at a five-event
+// burst spanning six seconds, despite a 200 entry cap, no expiry, and a
+// measured rate near 24 events/day that should have filled roughly
+// eight days.
+//
+// Events are now written under one key per UTC day. A burst can still
+// lose entries inside its own day, but it can no longer erase earlier
+// days, which is what turned a busy day into a blind digest. Reads walk
+// day keys newest-first and stop once the page is full, so the common
+// request stays at one or two KV reads.
 const RECENT_KEY = "notify:recent:v1";
+const RECENT_DAY_PREFIX = "notify:recent:v2:";
 const RECENT_MAX = 200;
+// Per-day cap. At the observed ~227 bytes per entry, 500 entries is
+// about 111 KB against KV's 25 MB value ceiling.
+const RECENT_DAY_MAX = 500;
+// How many day keys a read will walk before giving up, which preserves
+// roughly the history depth the old 200 entry cap was aiming for.
+const RECENT_DAY_SPAN = 8;
 const RECENT_PAGE_DEFAULT = 10;
-const RECENT_PAGE_MAX = 50;
+// Raised from 50. The daily digest reads this endpoint for a whole day
+// of events, and the old ceiling silently truncated a busy day's window
+// no matter how much history the buffer actually held.
+const RECENT_PAGE_MAX = 200;
 const GITHUB_SECURITY_ADVISORY_DEDUPE_TTL_SECONDS = 30 * 60;
 
 const VALID_LEVELS = new Set(["success", "info", "warning", "failure"]);
@@ -372,7 +393,7 @@ export default {
       payload?.persist_only === true &&
       webhookUrl === env.DISCORD_WEBHOOK_URL
     ) {
-      defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
+      defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed, signalClass));
       return json(
         200,
         { ok: true, dialect: auth.dialect, event: eventLabel, persisted: true },
@@ -425,7 +446,7 @@ export default {
     // buffer for the Lab Failure log. Best-effort: any KV failure must
     // not propagate to the caller, since the event has already been
     // delivered to Discord and Discord is the source of truth.
-    defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed));
+    defer(ctx, persistRecent(env, auth.dialect, eventLabel, embed, signalClass));
 
     return json(
       200,
@@ -446,6 +467,30 @@ export default {
  *   ?level=<success|info|warning|failure>   filter by level (optional,
  *                                           repeatable: ?level=warning&level=failure)
  */
+/**
+ * Collect recent events newest-first across per-day keys.
+ *
+ * Walks back one UTC day at a time and stops as soon as the requested
+ * page is full, so an ordinary Lab page poll costs one or two KV reads
+ * rather than a fixed fan-out. The legacy single key is appended last
+ * so history written before the per-day split stays visible until it
+ * ages out of the window naturally.
+ */
+async function readRecentWindow(env, limit) {
+  const collected = [];
+  const cursor = new Date();
+  for (let back = 0; back < RECENT_DAY_SPAN; back += 1) {
+    const key = `${RECENT_DAY_PREFIX}${cursor.toISOString().slice(0, 10)}`;
+    const raw = await env.NOTIFY_LOG.get(key);
+    if (raw) collected.push(...safeParseArray(raw));
+    if (collected.length >= limit) return collected;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  const legacy = await env.NOTIFY_LOG.get(RECENT_KEY);
+  if (legacy) collected.push(...safeParseArray(legacy));
+  return collected.slice(0, RECENT_MAX * RECENT_DAY_SPAN);
+}
+
 async function handleRecent(url, env, cors) {
   if (!env.NOTIFY_LOG) {
     // KV not bound, fail informatively rather than silently empty.
@@ -472,8 +517,7 @@ async function handleRecent(url, env, cors) {
   // a dead initial assignment.
   let events;
   try {
-    const raw = await env.NOTIFY_LOG.get(RECENT_KEY);
-    events = raw ? safeParseArray(raw) : [];
+    events = await readRecentWindow(env, limit);
   } catch {
     events = [];
   }
@@ -522,7 +566,13 @@ async function handleRecent(url, env, cors) {
  * same millisecond, one overwrites; that's acceptable for a Failure
  * log whose source of truth is Discord.
  */
-async function persistRecent(env, dialect, eventLabel, embed) {
+function recentDayKey(isoTimestamp) {
+  const parsed = Date.parse(isoTimestamp);
+  const day = Number.isFinite(parsed) ? new Date(parsed) : new Date();
+  return `${RECENT_DAY_PREFIX}${day.toISOString().slice(0, 10)}`;
+}
+
+async function persistRecent(env, dialect, eventLabel, embed, signalClass) {
   if (!env.NOTIFY_LOG) return;
   try {
     const level = colourToLevel(embed?.color);
@@ -531,17 +581,23 @@ async function persistRecent(env, dialect, eventLabel, embed) {
       level,
       dialect,
       event: eventLabel,
+      // The routing class is already resolved for this event, so
+      // persisting it lets a consumer filter on the same authority the
+      // router used instead of pattern matching a title. The digest
+      // needs exactly this to drop dependency traffic from its window.
+      signal_class: signalClass ?? null,
       title: embed?.title || "",
       // Description can be a code-fenced raw body for fallback embeds;
       // trim hard so the ring buffer stays small.
       message: truncate(stripCodeFences(embed?.description || ""), 280),
     };
 
-    const raw = await env.NOTIFY_LOG.get(RECENT_KEY);
+    const key = recentDayKey(summary.ts);
+    const raw = await env.NOTIFY_LOG.get(key);
     const existing = raw ? safeParseArray(raw) : [];
     existing.unshift(summary);
-    if (existing.length > RECENT_MAX) existing.length = RECENT_MAX;
-    await env.NOTIFY_LOG.put(RECENT_KEY, JSON.stringify(existing));
+    if (existing.length > RECENT_DAY_MAX) existing.length = RECENT_DAY_MAX;
+    await env.NOTIFY_LOG.put(key, JSON.stringify(existing));
   } catch {
     // Best-effort; nothing useful to do here. The event already shipped
     // to Discord and that is the canonical record.
