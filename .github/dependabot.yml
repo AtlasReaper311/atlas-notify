@@ -32,6 +32,13 @@ updates:
       - "dependencies"
       - "npm"
     target-branch: "main"
+    ignore:
+      # @cloudflare/vitest-plugin 1.x currently declares Vitest ^4.1.0.
+      # Keep minor/patch updates flowing, but require an explicit toolchain
+      # compatibility change before a future Vitest major is accepted.
+      - dependency-name: "vitest"
+        update-types:
+          - "version-update:semver-major"
     groups:
       npm-minor-patch:
         applies-to: "version-updates"
