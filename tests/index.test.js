@@ -251,6 +251,30 @@ describe("per-day recent buffer", () => {
     return res.json();
   }
 
+  it("logs recent-event persistence failures without event contents", async () => {
+    const { env } = makeInspectableLogEnv();
+    const waitCtx = makeWaitCtx();
+    env.NOTIFY_LOG.put = async () => {
+      throw new Error("simulated KV failure detail");
+    };
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    try {
+      await persist(env, waitCtx, "sensitive event title");
+      await waitCtx.wait();
+
+      expect(errorLog).toHaveBeenCalledTimes(1);
+      expect(errorLog).toHaveBeenCalledWith(
+        "[atlas-notify] recent-event persistence failed",
+      );
+      const loggedText = JSON.stringify(errorLog.mock.calls);
+      expect(loggedText).not.toContain("sensitive event title");
+      expect(loggedText).not.toContain("simulated KV failure detail");
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
   it("writes under a per-day key rather than the legacy single key", async () => {
     const { env, store } = makeInspectableLogEnv();
     const waitCtx = makeWaitCtx();
