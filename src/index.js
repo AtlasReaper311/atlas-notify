@@ -599,8 +599,9 @@ async function persistRecent(env, dialect, eventLabel, embed, signalClass) {
     if (existing.length > RECENT_DAY_MAX) existing.length = RECENT_DAY_MAX;
     await env.NOTIFY_LOG.put(key, JSON.stringify(existing));
   } catch {
-    // Best-effort; nothing useful to do here. The event already shipped
-    // to Discord and that is the canonical record.
+    // Keep history writes best-effort, but make failures visible without
+    // logging event content or storage error details.
+    console.error("[atlas-notify] recent-event persistence failed");
   }
 }
 
