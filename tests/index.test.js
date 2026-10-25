@@ -515,6 +515,38 @@ describe("signal-class channel routing (v1.1.0)", () => {
     expect(captured.embeds[0].title).toBe("WSL2 IP drift detected");
   });
 
+  it("routes an Atlas Watch catalogue warning to vault backups and keeps the title", async () => {
+    let captured = null;
+    mockDiscordSuccess("/api/webhooks/vault-id/vault-token", (body) => {
+      captured = body;
+    });
+
+    const res = await worker.fetch(
+      envelope({
+        source: "atlas-watch",
+        signal_class: "vault_backups",
+        level: "warning",
+        title: "The film catalogue is down",
+        message: "A catalogue request failed, so an earlier answer was shown.",
+        fields: { path: "/api/for-me/discover", status: "503" },
+      }),
+      {
+        ...ROUTED_ENV,
+        VAULT_BACKUPS_WEBHOOK_URL: "https://discord.com/api/webhooks/vault-id/vault-token",
+      },
+      ctx,
+    );
+
+    expect(res.status).toBe(200);
+    expect((await res.json()).event).toBe("vault_backups");
+    expect(captured.embeds[0].title).toBe("The film catalogue is down");
+    expect(captured.embeds[0].fields).toEqual([
+      { name: "Page", value: "/api/for-me/discover", inline: true },
+      { name: "Result", value: "503", inline: true },
+    ]);
+    expect(captured.embeds[0].footer).toEqual({ text: "atlas-watch" });
+  });
+
   it("routes signal_class rag_queries to its dedicated webhook", async () => {
     mockDiscordSuccess("/api/webhooks/rag-id/rag-token");
 

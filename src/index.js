@@ -376,6 +376,7 @@ export default {
       quota_cost: "QUOTA_COST_WEBHOOK_URL",
       reliability: "RELIABILITY_WEBHOOK_URL",
       gardener: "GARDENER_WEBHOOK_URL",
+      vault_backups: "VAULT_BACKUPS_WEBHOOK_URL",
     };
     const classSecretName = CLASS_WEBHOOK_SECRETS[signalClass];
     const webhookUrl =
@@ -897,6 +898,25 @@ const ENVELOPE_FORMATTERS = {
         { name: "Author", value: p.author, inline: true },
       ]),
       footer: FOOTER,
+      timestamp: new Date().toISOString(),
+    };
+  },
+
+  "atlas-watch"(p) {
+    const colour = COLOURS[p.level] ?? COLOURS.warning;
+    const labels = { path: "Page", status: "Result" };
+    return {
+      title: truncate(p.title ?? "Atlas Watch", LIMITS.title),
+      description: truncate(p.message ?? "", LIMITS.description),
+      color: colour,
+      fields: compactFields(
+        Object.entries(p.fields ?? {}).map(([name, value]) => ({
+          name: labels[name] ?? name,
+          value: name === "status" && value === "none" ? "No response" : String(value),
+          inline: true,
+        })),
+      ),
+      footer: { text: "atlas-watch" },
       timestamp: new Date().toISOString(),
     };
   },
