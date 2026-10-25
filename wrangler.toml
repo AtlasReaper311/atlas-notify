@@ -33,4 +33,5 @@ id = "bcf2b463496f4f4fbb886ab2d10f225d"
 # Optional channel webhooks; an unset class degrades to the default webhook:
 #   npx wrangler secret put GARDENER_WEBHOOK_URL
 #   npx wrangler secret put RELIABILITY_WEBHOOK_URL
+#   npx wrangler secret put VAULT_BACKUPS_WEBHOOK_URL
 # For local dev, copy .dev.vars.example to .dev.vars instead.

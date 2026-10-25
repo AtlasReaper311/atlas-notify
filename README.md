@@ -59,6 +59,7 @@ A payload may carry a `signal_class` that selects a dedicated Discord channel. E
 | `quota_cost` | `QUOTA_COST_WEBHOOK_URL` | quota and cost transitions |
 | `reliability` | `RELIABILITY_WEBHOOK_URL` | error-budget and burn-rate transitions from the atlas-api-public evaluator; the producer owns deduplication, cooldown, and storm suppression |
 | `gardener` | `GARDENER_WEBHOOK_URL` | Gardener controller summaries and remediation outcomes |
+| `vault_backups` | `VAULT_BACKUPS_WEBHOOK_URL` | Atlas Watch catalogue warnings, in the same channel as the daily vault report |
 
 CI and deploy workflows set the class through the reusable [`notify.yml`](.github/workflows/notify.yml) `signal_class` input.
 
