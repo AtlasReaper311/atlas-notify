@@ -13,11 +13,11 @@
     "lint": "eslint ."
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "^1.4.3",
+    "@cloudflare/vitest-plugin": "^1.4.11",
     "@eslint/js": "^10.0.1",
     "eslint": "^10.12.0",
     "globals": "^17.13.0",
     "vitest": "^4.1.12",
-    "wrangler": "^4.147.0"
+    "wrangler": "^4.156.0"
   }
 }
